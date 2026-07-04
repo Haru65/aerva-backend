@@ -1,0 +1,1 @@
+{"topic":"devices/123/data","message":{"MAC":"EC64C96EDA3C","TIME_STATUS":"OK","TIME":"2026-04-20 14:59:04","env":{"temp":28.3,"hum":54},"gas":{"co_ppm":0.1,"o2_pct":19.6,"co2_ppm":2866},"pm":{"pm1_0":13,"pm2_5":16,"pm10":18},"diag":{"rssi":5,"o2_warn":false,"uptime":101,"mqtt_err":0}},"receivedAt":"2026-06-30T14:23:41.195Z"}
