@@ -2,7 +2,7 @@ const express = require("express");
 const router = express.Router();
 const { retrivelLatestData ,graphDataRetrieval } = require("../controller/dashboard_data");
 
-router.get("/latest",async(req,res)=>{
+router.get("/",async(req,res)=>{
     try {
         const result = await retrivelLatestData();
         res.json(result);

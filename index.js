@@ -1,5 +1,4 @@
 const createSchema = require("./config/db")
-const client = require("./services/Mqttpayload")
 const express = require("express");
 const {ioConnection} = require("./services/socket_service");
 const app = express();
@@ -23,8 +22,8 @@ app.use(express.json());
 
 const server = http.createServer(app);
 const io = ioConnection(server);
+const client = require("./services/Mqttpayload");
 createSchema();
-client.connect();
 
 app.set("io", io);
 
@@ -35,7 +34,7 @@ app.get("/",(req,res)=>{
 
 
 app.use("/api/dashboard", dashboa);
-app.use("/api/dashboard", dashboa);
+
 app.use("/devices/living-room", mydevice);
 app.use("/api/reports", exportExcel);
 
@@ -44,4 +43,3 @@ server.listen(3000,()=>{
     console.log("http server running on port 3000")
     
 })
-

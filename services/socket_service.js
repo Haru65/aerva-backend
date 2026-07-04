@@ -1,28 +1,26 @@
-const io = require('socket.io');
-const cors = require('cors');
+const { Server } = require("socket.io");
+
+let io;
 
 const ioConnection = (server) => {
-    
-    //actual server connection auth
-    const ioserver = io(server,{
-        cors:{
+    io = new Server(server, {
+        cors: {
             origin: "*",
-            methods: ["GET", "POST","DELETE","OPTIONS"],
+            methods: ["GET", "POST", "DELETE", "OPTIONS"],
         }
-    })
+    });
 
-    //checking connection or failling
-    server.on('connection', (socket)=>{
-        console.log('Client connected:', socket.id);
-        
-    server.on('disconnect', (socket)=>{
-        console.log('Client disconnected:', socket.id);
-    })
-    return ioserver;
-    })
+    io.on("connection", (socket) => {
+        console.log("Client connected:", socket.id);
 
-return ioConnection;
-}
+        socket.on("disconnect", () => {
+            console.log("Client disconnected:", socket.id);
+        });
+    });
+
+    return io;
+};
+
 const getIO = () => {
     if (!io) {
         throw new Error("Socket.io not initialized");
@@ -30,4 +28,5 @@ const getIO = () => {
 
     return io;
 };
+
 module.exports = { ioConnection, getIO };
