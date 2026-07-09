@@ -6,7 +6,7 @@ const server = process.env.server;
 const port = Number(process.env.port || 1883);
 const username = process.env.username;
 const password = process.env.password;
-const datatopic = "devices/123/data";
+const datatopic = "AGM/pub/EC64C96EDA3C";
 
 
 const mqttAgent = {
