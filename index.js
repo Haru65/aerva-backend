@@ -17,7 +17,10 @@ const exportExcel = require("./routes/reports")
 // Middleware to parse JSON requests
 app.use(express.json());
 dotenv.config();
-app.use(cors());
+app.use(cors({
+    origin: process.env.FRONTEND_URL,
+    methods: ["GET", "POST", "DELETE", "OPTIONS"],
+}));
 app.use(express.json());
 
 const server = http.createServer(app);

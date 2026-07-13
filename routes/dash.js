@@ -1,33 +1,49 @@
 const express = require("express");
 const router = express.Router();
-const { retrivelLatestData ,graphDataRetrieval } = require("../controller/dashboard_data");
+const {
+    retrivelLatestData,
+    graphDataRetrieval,
+} = require("../controller/dashboard_data");
 
-router.get("/",async(req,res)=>{
+router.get("/", async (req, res) => {
     try {
         const result = await retrivelLatestData();
-        res.json(result);
-    }catch (err){
+        return res.json(result);
+    } catch (err) {
         console.error("Error retrieving latest data:", err);
-        res.status(500).json({ error: "Internal Server Error" });
+        return res.status(500).json({ error: "Internal Server Error" });
     }
-})
+});
 
-router.get("/graph",async(req,res)=>{
-    try{
-        const { device_mac, metric, range } = req.query;
+router.get("/graph", async (req, res) => {
+    const {
+        device_mac: deviceMac,
+        metric,
+        range = "24h",
+    } = req.query;
 
-        if (!device_mac || !metric || !range) {
-            return res.status(400).json({ error: "Missing required query parameters" });
-        }
-        const graphData = await graphDataRetrieval({deviceMac:device_mac,
+    if (!deviceMac || !metric) {
+        return res.status(400).json({
+            error: "device_mac and metric query parameters are required",
+        });
+    }
+
+    try {
+        const graphData = await graphDataRetrieval({
+            deviceMac,
             metric,
-            range:range || "24hr"});
-        res.json(graphData);
-    }catch(err){
-        console.error("error retriving past data",err)
-        res.status(500).json({ error: "Internal Server Error" });
+            range,
+        });
+
+        return res.json(graphData);
+    } catch (err) {
+        if (err.message.startsWith("Invalid metric:") || err.message.startsWith("Invalid range:")) {
+            return res.status(400).json({ error: err.message });
+        }
+
+        console.error("Error retrieving graph data:", err);
+        return res.status(500).json({ error: "Internal Server Error" });
     }
-}
-);
+});
 
 module.exports = router;
