@@ -71,11 +71,14 @@ const reportData = async (deviceMac,range) => {
             ORDER BY received_at DESC`,
             [deviceMac, interval]
         );
-            
+         
         return (result.rows.map(row => ({
+           
             id: row.id,
             device_mac: row.device_mac,
+            timestamp: row.timestamp,
             received_at: row.received_at,
+            
             readings: {
                 temperature: Number(row.temperature),
                 humidity: Number(row.humidity),

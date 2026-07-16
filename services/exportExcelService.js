@@ -73,7 +73,8 @@ const exportExcel = async (deviceMac, range) => {
         const columns = [
             { header: "ID", key: "id", width: 10 },
             { header: "Device MAC", key: "device_mac", width: 20 },
-            { header: "Received At", key: "received_at", width: 20 }
+            { header: "Received At", key: "received_at", width: 20 , style:{numFmt: "yyyy-mm-dd hh:mm:ss"}},
+            
         ];
 
         // Add metric columns dynamically
@@ -94,7 +95,8 @@ const exportExcel = async (deviceMac, range) => {
             const rowData = {
                 id: row.id,
                 device_mac: row.device_mac,
-                received_at: row.received_at
+                received_at: row.received_at,
+                timestamp: row.timestamp
             };
 
             Object.keys(row.readings).forEach(metric => {
