@@ -5,9 +5,11 @@ let io;
 const ioConnection = (server) => {
     io = new Server(server, {
         cors: {
-            origin: process.env.FRONTEND_URL,
+            origin: process.env.FRONTEND_URL || "*",
             methods: ["GET", "POST", "DELETE", "OPTIONS"],
-        }
+            credentials: true
+        },
+        transports: ['websocket', 'polling']
     });
 
     io.on("connection", (socket) => {
@@ -15,6 +17,10 @@ const ioConnection = (server) => {
 
         socket.on("disconnect", () => {
             console.log("Client disconnected:", socket.id);
+        });
+
+        socket.on("error", (error) => {
+            console.error("Socket error:", socket.id, error);
         });
     });
 
