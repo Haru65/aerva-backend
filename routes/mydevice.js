@@ -3,21 +3,9 @@ const router = require("express").Router({ mergeParams: true });
 const { retrivelLatestData ,graphDataRetrieval } = require("../controller/dashboard_data");
 const {liveAggregateData} = require("../controller/devices.js")
 
-const DEVICE_MACS = {
-    "living-room": "EC64C96EDA3C",
-    "master-bedroom": "8857217641FC",
-    "kitchen": "489D31D02758"
-};
-
-const getDeviceMac = (req) => DEVICE_MACS[req.params.deviceId];
-
-router.get("/",async(req,res)=>{
+router.get("/:deviceMac",async(req,res)=>{
     try {
-        const deviceMac = getDeviceMac(req);
-        if (!deviceMac) {
-            return res.status(404).json({ error: "Unknown device" });
-        }
-
+        const { deviceMac } = req.params;
         const result = await retrivelLatestData(deviceMac);
         if (!result) {
             return res.status(404).json({ error: "No data found for this device" });
@@ -29,13 +17,13 @@ router.get("/",async(req,res)=>{
     }
 })
 
-router.get("/graph",async(req,res)=>{
+router.get("/:deviceMac/graph",async(req,res)=>{
     try{
+        const { deviceMac } = req.params;
         const { metric, range = "24h" } = req.query;
-        const deviceMac = getDeviceMac(req);
 
-        if (!deviceMac || !metric) {
-            return res.status(400).json({ error: "Unknown device or missing metric" });
+        if (!metric) {
+            return res.status(400).json({ error: "Missing required parameter: metric" });
         }
         const graphData = await graphDataRetrieval({deviceMac,
             metric,
@@ -51,13 +39,13 @@ router.get("/graph",async(req,res)=>{
 }
 );
 
-router.get("/metric-card", async (req, res) => {
+router.get("/:deviceMac/metric-card", async (req, res) => {
     try {
+        const { deviceMac } = req.params;
         const { metric, range } = req.query;
-        const deviceMac = getDeviceMac(req);
 
-        if (!deviceMac || !metric || !range) {
-            return res.status(400).json({ error: "Unknown device or missing required query parameters" });
+        if (!metric || !range) {
+            return res.status(400).json({ error: "Missing required query parameters: metric, range" });
         }
 
         const metricCardData = await liveAggregateData(deviceMac, metric, range);
