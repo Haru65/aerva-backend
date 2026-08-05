@@ -15,6 +15,35 @@ const ioConnection = (server) => {
     io.on("connection", (socket) => {
         console.log("Client connected:", socket.id);
 
+        // Subscribe to device updates
+        // Client sends: { deviceMac: "EC64C96EDA3C" }
+        socket.on("subscribe:device", (data) => {
+            const deviceMac = data?.deviceMac;
+            if (deviceMac) {
+                const room = `device:${deviceMac}`;
+                socket.join(room);
+                console.log(`Client ${socket.id} subscribed to ${room}`);
+                socket.emit("subscribed", { deviceMac, status: "connected" });
+            }
+        });
+
+        // Unsubscribe from device updates
+        socket.on("unsubscribe:device", (data) => {
+            const deviceMac = data?.deviceMac;
+            if (deviceMac) {
+                const room = `device:${deviceMac}`;
+                socket.leave(room);
+                console.log(`Client ${socket.id} unsubscribed from ${room}`);
+            }
+        });
+
+        // Subscribe to all devices
+        socket.on("subscribe:all-devices", () => {
+            socket.join("all-devices");
+            console.log(`Client ${socket.id} subscribed to all-devices`);
+            socket.emit("subscribed", { status: "connected", scope: "all-devices" });
+        });
+
         socket.on("disconnect", () => {
             console.log("Client disconnected:", socket.id);
         });
@@ -35,4 +64,19 @@ const getIO = () => {
     return io;
 };
 
-module.exports = { ioConnection, getIO };
+// Emit device-specific updates
+const emitDeviceUpdate = (deviceMac, data) => {
+    if (!io) return;
+    const room = `device:${deviceMac}`;
+    io.to(room).emit(`/devices/${deviceMac}`, data);
+    // Also emit to all-devices room
+    io.to("all-devices").emit("/devices/all", { deviceMac, data });
+};
+
+// Emit dashboard update (primary device)
+const emitDashboardUpdate = (data) => {
+    if (!io) return;
+    io.emit("/api/dashboard/", data);
+};
+
+module.exports = { ioConnection, getIO, emitDeviceUpdate, emitDashboardUpdate };

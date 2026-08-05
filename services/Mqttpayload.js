@@ -1,7 +1,7 @@
 const mqtt = require('mqtt');
 const mqttAgent = require('../config/mqtt_config');
 const  savePayload  = require('./messageStore');
-const { getIO } = require("./socket_service");
+const { emitDeviceUpdate, emitDashboardUpdate } = require("./socket_service");
 
 const client = mqtt.connect(mqttAgent.url, mqttAgent.options);
 
@@ -63,8 +63,13 @@ client.on('message', async (topic, message) => {
     try {
         const savedPayload = await savePayload(payload);
         const dashboardLatest = formatDashboardLatest(savedPayload);
+        const deviceMac = savedPayload.device_mac;
 
-        getIO().emit("/api/dashboard/", dashboardLatest);
+        // Emit to device-specific room
+        emitDeviceUpdate(deviceMac, dashboardLatest);
+        
+        // Emit to dashboard (for primary device)
+        emitDashboardUpdate(dashboardLatest);
 
         console.log(`Stored message on topic ${topic}: ${rawMessage}`);
     } catch (err) {
