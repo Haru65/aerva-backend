@@ -34,7 +34,8 @@ const formatDashboardLatest = (row) => ({
         pm1_0: Number(row.pm1_0),
         pm2_5: Number(row.pm2_5),
         pm10: Number(row.pm10),
-        rssi: Number(row.rssi)
+        rssi: Number(row.rssi),
+        aqi: Number(row.aqi)
     },
     status: {
         o2_warn: row.o2_warn,

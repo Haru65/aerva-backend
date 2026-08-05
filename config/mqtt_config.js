@@ -6,7 +6,8 @@ const server = process.env.server;
 const port = Number(process.env.port || 1883);
 const username = process.env.username;
 const password = process.env.password;
-const datatopic = "AGM/pub/EC64C96EDA3C";
+const devices = ["489D31D02758","8857217641FC","EC64C96EDA3C"]
+const datatopic = devices.map(device => `AGM/pub/${device}`);
 
 
 const mqttAgent = {

@@ -11,6 +11,7 @@ const AllowedMetrics = {
     pm1_0: "pm1_0",
     pm2_5: "pm2_5",
     pm10: "pm10",
+    aqi: "aqi",
     rssi: "rssi"
 };
 
@@ -94,6 +95,18 @@ const metricConfig = {
             { label: "LOW", min: 0, max: 19.5, status: "low" },
             { label: "GOOD", min: 19.5, max: 23.5, status: "good" },
             { label: "HIGH", min: 23.5, max: 25, status: "high" }
+        ]},
+    aqi: {
+        column: "aqi",
+        title: "Air Quality Index",
+        category: "AIR",
+        unit: "",
+        gaugeMin: 0,
+        gaugeMax: 300,
+        bands: [
+            { label: "GOOD", min: 0, max: 50, status: "good" },
+            { label: "MODERATE", min: 51, max: 100, status: "moderate" },
+            { label: "UNHEALTHY", min: 101, max: 300, status: "poor" },
         ]}
 };
 

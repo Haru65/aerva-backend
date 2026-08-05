@@ -52,6 +52,11 @@ const allowedMetrics = {
         column: "rssi",
         label: "RSSI",
         unit: ""
+    },
+    aqi: {
+        column: "aqi",
+        label: "aqi",
+        unit: ""
     }
 };
 

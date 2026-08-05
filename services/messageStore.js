@@ -22,13 +22,14 @@ const savePayload = async (payload) => {
             pm1_0,
             pm2_5,
             pm10,
+            aqi,
             rssi,
             o2_warn,
             uptime,
             mqtt_err,
             raw_payload
     ) VALUES (
-    $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
+    $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
     RETURNING *;`;
 
     const values = [
@@ -43,6 +44,7 @@ const savePayload = async (payload) => {
         message.pm?.pm1_0,
         message.pm?.pm2_5,
         message.pm?.pm10,
+        message.pm?.aqi,
         message.diag?.rssi,
         message.diag?.o2_warn,
         message.diag?.uptime,

@@ -38,7 +38,7 @@ app.get("/",(req,res)=>{
 
 app.use("/api/dashboard", dashboa);
 
-app.use("/devices/living-room", mydevice);
+app.use("/devices/:deviceId", mydevice);
 app.use("/api/reports", exportExcel);
 
 

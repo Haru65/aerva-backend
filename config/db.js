@@ -25,6 +25,7 @@ async function createSchema() {
         pm1_0 NUMERIC,
         pm2_5 NUMERIC,
         pm10 NUMERIC,
+        aqi NUMERIC,
 
         rssi NUMERIC,
         o2_warn BOOLEAN,

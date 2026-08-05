@@ -48,6 +48,11 @@ const allowedMetrics = {
         column: "rssi",
         label: "RSSI",
         unit: ""
+    },
+    aqi: {
+        column: "aqi",
+        label: "Air Quality Index",
+        unit: ""
     }
 };
 
@@ -88,6 +93,7 @@ const reportData = async (deviceMac,range) => {
                 pm1_0: Number(row.pm1_0),
                 pm2_5: Number(row.pm2_5),
                 pm10: Number(row.pm10),
+                aqi: Number(row.aqi),
                 rssi: Number(row.rssi)
             }
         })));
