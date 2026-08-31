@@ -24,9 +24,9 @@ const metricConfig = {
         gaugeMin: 0,
         gaugeMax: 3000,
         bands: [
-            { label: "GOOD", min: 0, max: 1000, status: "good" },
-            { label: "POOR", min: 1000, max: 2000, status: "poor" },
-            { label: "BAD", min: 2000, max: 3000, status: "bad" }
+            { label: "GREEN", min: 0, max: 800, status: "good" },
+            { label: "YELLOW", min: 800, max: 1500, status: "moderate" },
+            { label: "RED", min: 1500, max: 3000, status: "bad" }
         ]
     },
 
@@ -36,11 +36,11 @@ const metricConfig = {
         category: "AIR",
         unit: "µg/m³",
         gaugeMin: 0,
-        gaugeMax: 250,
+        gaugeMax: 500,
         bands: [
-            { label: "GOOD", min: 0, max: 30, status: "good" },
-            { label: "MODERATE", min: 30, max: 60, status: "moderate" },
-            { label: "BAD", min: 60, max: 250, status: "bad" }
+            { label: "GREEN", min: 0, max: 60, status: "good" },
+            { label: "YELLOW", min: 60, max: 250, status: "moderate" },
+            { label: "RED", min: 250, max: 500, status: "bad" }
         ]
     },
 
@@ -79,9 +79,9 @@ const metricConfig = {
         gaugeMin: 0,
         gaugeMax:35,
         bands:[
-            {label:"GOOD",min:0,max:9,status:"good"},
-            {label:"POOR",min:9,max:25,status:"poor"},
-            {label:"BAD",min:25,max:35,status:"bad"}
+            {label:"GREEN",min:0,max:9,status:"good"},
+            {label:"YELLOW",min:9,max:25,status:"moderate"},
+            {label:"RED",min:25,max:35,status:"bad"}
         ]
     },
     o2_pct: {
@@ -92,9 +92,10 @@ const metricConfig = {
         gaugeMin: 0,
         gaugeMax: 25, 
         bands: [
-            { label: "LOW", min: 0, max: 19.5, status: "low" },
-            { label: "GOOD", min: 19.5, max: 23.5, status: "good" },
-            { label: "HIGH", min: 23.5, max: 25, status: "high" }
+            { label: "RED", min: 0, max: 18, status: "bad" },
+            { label: "YELLOW", min: 18, max: 19.5, status: "moderate" },
+            { label: "GREEN", min: 19.5, max: 23, status: "good" },
+            { label: "RED", min: 23, max: 25, status: "bad" }
         ]},
     aqi: {
         column: "aqi",
@@ -102,11 +103,11 @@ const metricConfig = {
         category: "AIR",
         unit: "",
         gaugeMin: 0,
-        gaugeMax: 300,
+        gaugeMax: 500,
         bands: [
-            { label: "GOOD", min: 0, max: 50, status: "good" },
-            { label: "MODERATE", min: 51, max: 100, status: "moderate" },
-            { label: "UNHEALTHY", min: 101, max: 300, status: "poor" },
+            { label: "GREEN", min: 0, max: 100, status: "good" },
+            { label: "YELLOW", min: 100, max: 300, status: "moderate" },
+            { label: "RED", min: 300, max: 500, status: "bad" },
         ]}
 };
 

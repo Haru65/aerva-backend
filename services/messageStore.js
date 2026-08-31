@@ -28,12 +28,60 @@ const savePayload = async (payload) => {
         message = message.message;
     }
 
-    // Calculate AQI if not provided by device
-    let aqi = message.pm?.aqi;
-    if (aqi == null) {
-        const pm25 = message.pm?.pm2_5;
-        if (pm25 != null) {
-            aqi = calculateAqiFromPm25(pm25);
+    // Handle two payload formats:
+    // 1. AGM format: { MAC, TIME_STATUS, TIME, env:{temp,hum}, gas:{...}, pm:{...}, diag:{...} }
+    // 2. New flat format: { device_mac, readings:{...}, status:{...}, received_at }
+    
+    const isNewFormat = message.device_mac || (message.readings && typeof message.readings === "object");
+    
+    let deviceMac, timeStatus, deviceTime, temperature, humidity, co_ppm, o2_pct, co2_ppm, pm1_0, pm2_5, pm10, aqi, rssi, o2_warn, uptime, mqtt_err;
+
+    if (isNewFormat) {
+        // New flat format
+        deviceMac = message.device_mac;
+        timeStatus = message.status?.time_status || null;
+        deviceTime = message.received_at || new Date().toISOString();
+        
+        const readings = message.readings || {};
+        temperature = readings.temperature;
+        humidity = readings.humidity;
+        co_ppm = readings.co_ppm;
+        o2_pct = readings.o2_pct;
+        co2_ppm = readings.co2_ppm;
+        pm1_0 = readings.pm1_0;
+        pm2_5 = readings.pm2_5;
+        pm10 = readings.pm10;
+        rssi = readings.rssi;
+        
+        const status = message.status || {};
+        o2_warn = status.o2_warn;
+        uptime = null;
+        mqtt_err = status.mqtt_err;
+        
+        // Use provided AQI or calculate from PM2.5
+        aqi = message.readings?.aqi || calculateAqiFromPm25(pm2_5);
+    } else {
+        // AGM format (legacy)
+        deviceMac = message.MAC;
+        timeStatus = message.TIME_STATUS;
+        deviceTime = message.TIME;
+        temperature = message.env?.temp;
+        humidity = message.env?.hum;
+        co_ppm = message.gas?.co_ppm;
+        o2_pct = message.gas?.o2_pct;
+        co2_ppm = message.gas?.co2_ppm;
+        pm1_0 = message.pm?.pm1_0;
+        pm2_5 = message.pm?.pm2_5;
+        pm10 = message.pm?.pm10;
+        rssi = message.diag?.rssi;
+        o2_warn = message.diag?.o2_warn;
+        uptime = message.diag?.uptime;
+        mqtt_err = message.diag?.mqtt_err;
+        
+        // Calculate AQI if not provided by device
+        aqi = message.pm?.aqi;
+        if (aqi == null) {
+            aqi = calculateAqiFromPm25(pm2_5);
         }
     }
 
@@ -61,22 +109,22 @@ const savePayload = async (payload) => {
     RETURNING *;`;
 
     const values = [
-        message.MAC,
-        message.TIME_STATUS,
-        message.TIME,
-        message.env?.temp,
-        message.env?.hum,
-        message.gas?.co_ppm,
-        message.gas?.o2_pct,
-        message.gas?.co2_ppm,
-        message.pm?.pm1_0,
-        message.pm?.pm2_5,
-        message.pm?.pm10,
+        deviceMac,
+        timeStatus,
+        deviceTime,
+        temperature,
+        humidity,
+        co_ppm,
+        o2_pct,
+        co2_ppm,
+        pm1_0,
+        pm2_5,
+        pm10,
         aqi,
-        message.diag?.rssi,
-        message.diag?.o2_warn,
-        message.diag?.uptime,
-        message.diag?.mqtt_err,
+        rssi,
+        o2_warn,
+        uptime,
+        mqtt_err,
         message,
     ];
 
