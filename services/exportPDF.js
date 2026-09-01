@@ -24,7 +24,7 @@ const exportPDF = async (deviceMac,  range) => {
 
         data.forEach((entry, index) => {
             doc.text(`Entry ${index + 1}:`);
-            doc.text(`Received At: ${entry.received_at}`);
+            doc.text(`Device Time: ${entry.device_time}`);
             Object.keys(entry.readings).forEach(metric => {
                 doc.text(`${metric}: ${entry.readings[metric]}`);
             });

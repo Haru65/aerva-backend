@@ -69,10 +69,20 @@ const reportData = async (deviceMac, range) => {
         }
 
         const result = await pool.query(
-            `SELECT * FROM mqtt_payload
-            WHERE device_mac = $1
-              AND device_time::timestamp >= (NOW() - $2::interval)::timestamp
-            ORDER BY device_time::timestamp DESC`,
+            `WITH report_rows AS (
+                SELECT
+                    *,
+                    CASE
+                        WHEN device_time ~ '^\\d{4}-\\d{2}-\\d{2}([ T]\\d{2}:\\d{2}(:\\d{2})?)?$'
+                        THEN device_time::timestamp
+                        ELSE NULL
+                    END AS report_device_time
+                FROM mqtt_payload
+                WHERE device_mac = $1
+            )
+            SELECT * FROM report_rows
+            WHERE report_device_time >= (NOW() - $2::interval)::timestamp
+            ORDER BY report_device_time DESC`,
             [deviceMac, interval]
         );
          
