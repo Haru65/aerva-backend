@@ -1,6 +1,4 @@
-const e = require("express");
 const pool = require("../controller/db_connection");
-const excelJS = require("exceljs");
 
 
 const allowedMetrics = {
@@ -63,7 +61,7 @@ const rangeToInterval = {
     "30d": "30 days"
 };
 
-const reportData = async (deviceMac,range) => {
+const reportData = async (deviceMac, range) => {
     try{
         const interval = rangeToInterval[range];
         if (!interval) {
@@ -82,6 +80,7 @@ const reportData = async (deviceMac,range) => {
             id: row.id,
             device_mac: row.device_mac,
             timestamp: row.timestamp,
+            device_time: row.device_time,
             received_at: row.received_at,
             
             readings: {

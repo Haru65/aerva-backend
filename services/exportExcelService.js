@@ -3,10 +3,6 @@ const excelJS = require("exceljs");
 const fs = require("fs/promises");
 const path = require("path");
 
-const webbook = new excelJS.Workbook();
-const worksheet = webbook.addWorksheet("Aerva Report");
-
-
 const allowedMetrics = {
     temperature: {
         column: "temperature",
@@ -73,6 +69,9 @@ const exportExcel = async (deviceMac, range) => {
         if (!data || data.length === 0) {
             throw new Error("No data found for the specified device and range");
         }
+
+        const webbook = new excelJS.Workbook();
+        const worksheet = webbook.addWorksheet("Aerva Report");
 
         // Define columns based on allowedMetrics
         const columns = [
