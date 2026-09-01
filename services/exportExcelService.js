@@ -77,7 +77,7 @@ const exportExcel = async (deviceMac, range) => {
         const columns = [
             { header: "ID", key: "id", width: 10 },
             { header: "Device MAC", key: "device_mac", width: 20 },
-            { header: "Received At", key: "received_at", width: 20 , style:{numFmt: "yyyy-mm-dd hh:mm:ss"}},
+            { header: "Device Time", key: "device_time", width: 20 , style:{numFmt: "yyyy-mm-dd hh:mm:ss"}},
             
         ];
 
@@ -99,7 +99,7 @@ const exportExcel = async (deviceMac, range) => {
             const rowData = {
                 id: row.id,
                 device_mac: row.device_mac,
-                received_at: row.received_at,
+                device_time: row.device_time,
                 timestamp: row.timestamp
             };
 
