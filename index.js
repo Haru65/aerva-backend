@@ -12,6 +12,7 @@ const http = require("http");
 const dashboa = require("./routes/dash");
 const mydevice = require("./routes/mydevice");
 const exportExcel = require("./routes/reports")
+const alerts = require("./routes/alerts")
 
 
 // Middleware to parse JSON requests
@@ -19,14 +20,12 @@ app.use(express.json());
 dotenv.config();
 app.use(cors({
     origin: process.env.FRONTEND_URL,
-    methods: ["GET", "POST", "DELETE", "OPTIONS"],
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
 }));
 app.use(express.json());
 
 const server = http.createServer(app);
 const io = ioConnection(server);
-const client = require("./services/Mqttpayload");
-createSchema();
 
 app.set("io", io);
 
@@ -40,9 +39,18 @@ app.use("/api/dashboard", dashboa);
 
 app.use("/devices", mydevice);
 app.use("/api/reports", exportExcel);
+app.use("/api/alerts", alerts);
 
 
-server.listen(3000,()=>{
-    console.log("http server running on port 3000")
-    
-})
+createSchema()
+    .then(() => {
+        require("./services/Mqttpayload");
+        server.listen(3000,()=>{
+            console.log("http server running on port 3000")
+            
+        })
+    })
+    .catch((err) => {
+        console.error("Failed to initialize database schema:", err);
+        process.exit(1);
+    });

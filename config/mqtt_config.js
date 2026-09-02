@@ -1,18 +1,45 @@
 const path = require('path');
 const dotenv = require('dotenv');
+const pool = require('../controller/db_connection');
+
 dotenv.config({ path: path.join(__dirname, '..', '.env') });
 
 const server = process.env.MQTT_SERVER;
 const port = Number(process.env.MQTT_PORT || 1883);
 const username = process.env.MQTT_USERNAME;
 const password = process.env.MQTT_PASSWORD;
-const devices = ["489D31D02758","8857217641FC","EC64C96EDA3C"]
-const datatopic = devices.map(device => `AGM/pub/${device}`);
+
+function normalizeDeviceMac(deviceMac) {
+    return String(deviceMac || '').trim().toUpperCase();
+}
+
+function topicForDevice(deviceMac) {
+    return `AGM/pub/${normalizeDeviceMac(deviceMac)}`;
+}
+
+async function getDeviceMacs() {
+    const result = await pool.query(`
+        SELECT device_mac
+        FROM devices
+        WHERE device_mac IS NOT NULL AND TRIM(device_mac) <> ''
+        ORDER BY created_at ASC, name ASC
+    `);
+
+    return result.rows
+        .map(row => normalizeDeviceMac(row.device_mac))
+        .filter(Boolean);
+}
+
+async function getDataTopics() {
+    const deviceMacs = await getDeviceMacs();
+    return deviceMacs.map(topicForDevice);
+}
 
 
 const mqttAgent = {
     url: server,
-    dataTopic: datatopic,
+    getDataTopics,
+    topicForDevice,
     options: {
         port: port,
         username: username,

@@ -5,10 +5,10 @@ const retrivelLatestData = async (deviceMac = null) => {
     try{
     const result = await pool.query(
         `SELECT * FROM mqtt_payload
-         ${deviceMac ? "WHERE device_mac = $1" : ""}
+         ${deviceMac ? "WHERE UPPER(TRIM(device_mac)) = $1" : ""}
          ORDER BY received_at DESC
          LIMIT 1`,
-        deviceMac ? [deviceMac] : []
+        deviceMac ? [String(deviceMac).trim().toUpperCase()] : []
     );
     
     const row = result.rows[0];
@@ -16,8 +16,9 @@ const retrivelLatestData = async (deviceMac = null) => {
             return null;
         };
     return {
-                id: row.id,
+            id: row.id,
             device_mac: row.device_mac,
+            device_time: row.device_time,
             received_at: row.received_at,
 
             readings: {
@@ -76,13 +77,29 @@ const graphDataRetrieval = async ({ deviceMac, metric, range }) => {
 
     try {
         const result = await pool.query(
-            `SELECT
-                received_at AS time,
-                ${columnName} AS value
-            FROM mqtt_payload
-            WHERE device_mac = $1
-              AND received_at >= NOW() - $2::interval
-            ORDER BY received_at ASC`,
+            `WITH graph_rows AS (
+                SELECT
+                    ${columnName} AS value,
+                    COALESCE(
+                      CASE
+                        WHEN device_time ~ '^\\d{4}-\\d{2}-\\d{2}([ T]\\d{2}:\\d{2}(:\\d{2})?)?$'
+                        THEN device_time::timestamp
+                        ELSE NULL
+                      END,
+                      received_at
+                    ) AS graph_time
+                FROM mqtt_payload
+                WHERE UPPER(TRIM(device_mac)) = UPPER(TRIM($1))
+            )
+            SELECT
+                graph_time AS time,
+                value
+            FROM graph_rows
+            WHERE graph_time IS NOT NULL
+              AND value IS NOT NULL
+              AND graph_time >= NOW() - $2::interval
+              AND graph_time <= NOW()
+            ORDER BY graph_time ASC`,
             [deviceMac, interval]
         );
 

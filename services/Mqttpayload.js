@@ -2,28 +2,67 @@ const mqtt = require('mqtt');
 const mqttAgent = require('../config/mqtt_config');
 const  savePayload  = require('./messageStore');
 const { emitDeviceUpdate, emitDashboardUpdate } = require("./socket_service");
+const mqttSubscriptionEvents = require('./mqttSubscriptionEvents');
+const { evaluateAlertRulesForReading } = require('./alert_service');
 
 const client = mqtt.connect(mqttAgent.url, mqttAgent.options);
+let subscribedTopics = new Set();
+
+async function refreshSubscriptions() {
+    if (!client.connected) return;
+
+    let topics;
+    try {
+        topics = await mqttAgent.getDataTopics();
+    } catch (err) {
+        console.error("Error loading MQTT topics from database:", err);
+        return;
+    }
+
+    const nextTopics = new Set(topics);
+    const topicsToSubscribe = topics.filter(topic => !subscribedTopics.has(topic));
+    const topicsToUnsubscribe = [...subscribedTopics].filter(topic => !nextTopics.has(topic));
+
+    if (topicsToSubscribe.length) {
+        client.subscribe(topicsToSubscribe, (err) => {
+            if (err) {
+                console.error("Error subscribing to topic:", err);
+            } else {
+                console.log(`Subscribed to topics: ${topicsToSubscribe.join(", ")}`);
+            }
+        });
+    }
+
+    if (topicsToUnsubscribe.length) {
+        client.unsubscribe(topicsToUnsubscribe, (err) => {
+            if (err) {
+                console.error("Error unsubscribing from topic:", err);
+            } else {
+                console.log(`Unsubscribed from topics: ${topicsToUnsubscribe.join(", ")}`);
+            }
+        });
+    }
+
+    subscribedTopics = nextTopics;
+}
 
 client.on('connect', () => {
     console.log("Connected to MQTT broker");
-
-    client.subscribe(mqttAgent.dataTopic, (err) => {
-        if (err) {
-            console.error("Error subscribing to topic:", err);
-        } else {
-            console.log(`Subscribed to topic: ${mqttAgent.dataTopic}`);
-        }
-    });
+    refreshSubscriptions();
 });
 
 client.on('error', (err) => {
     console.error("Error connecting to MQTT broker:", err);
 });
 
+mqttSubscriptionEvents.on('devices:changed', () => {
+    refreshSubscriptions();
+});
+
 const formatDashboardLatest = (row) => ({
     id: row.id,
     device_mac: row.device_mac,
+    device_time: row.device_time,
     received_at: row.received_at,
     readings: {
         temperature: Number(row.temperature),
@@ -71,10 +110,15 @@ client.on('message', async (topic, message) => {
         // Emit to dashboard (for primary device)
         emitDashboardUpdate(dashboardLatest);
 
+        await evaluateAlertRulesForReading(savedPayload);
+
         console.log(`Stored message on topic ${topic}: ${rawMessage}`);
     } catch (err) {
         console.error("Error storing MQTT payload:", err);
     }
 });
 
-module.exports = client;
+module.exports = {
+    client,
+    refreshSubscriptions
+};

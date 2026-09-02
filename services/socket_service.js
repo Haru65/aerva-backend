@@ -44,6 +44,12 @@ const ioConnection = (server) => {
             socket.emit("subscribed", { status: "connected", scope: "all-devices" });
         });
 
+        socket.on("subscribe:alerts", () => {
+            socket.join("alerts");
+            console.log(`Client ${socket.id} subscribed to alerts`);
+            socket.emit("subscribed", { status: "connected", scope: "alerts" });
+        });
+
         socket.on("disconnect", () => {
             console.log("Client disconnected:", socket.id);
         });
@@ -79,4 +85,9 @@ const emitDashboardUpdate = (data) => {
     io.emit("/api/dashboard/", data);
 };
 
-module.exports = { ioConnection, getIO, emitDeviceUpdate, emitDashboardUpdate };
+const emitAlertEvent = (data) => {
+    if (!io) return;
+    io.to("alerts").emit("/api/alerts/events", data);
+};
+
+module.exports = { ioConnection, getIO, emitDeviceUpdate, emitDashboardUpdate, emitAlertEvent };

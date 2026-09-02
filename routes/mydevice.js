@@ -1,7 +1,65 @@
 const express = require("express");
 const router = require("express").Router({ mergeParams: true });
 const { retrivelLatestData ,graphDataRetrieval } = require("../controller/dashboard_data");
-const {liveAggregateData} = require("../controller/devices.js")
+const {
+    liveAggregateData,
+    listDeviceMetadata,
+    upsertDeviceMetadata,
+    updateDeviceMetadata,
+    deleteDeviceMetadata
+} = require("../controller/devices.js")
+const mqttSubscriptionEvents = require("../services/mqttSubscriptionEvents");
+
+router.get("/", async (req, res) => {
+    try {
+        const devices = await listDeviceMetadata();
+        res.json({ devices });
+    } catch (err) {
+        console.error("Error retrieving devices metadata:", err);
+        res.status(500).json({ error: "Internal Server Error" });
+    }
+});
+
+router.post("/", async (req, res) => {
+    try {
+        const device = await upsertDeviceMetadata(req.body || {});
+        mqttSubscriptionEvents.emit("devices:changed");
+        res.status(201).json(device);
+    } catch (err) {
+        console.error("Error saving device metadata:", err);
+        const status = err.message === "device_mac is required" ? 400 : 500;
+        res.status(status).json({ error: err.message });
+    }
+});
+
+router.patch("/:deviceMac", async (req, res) => {
+    try {
+        const { deviceMac } = req.params;
+        const device = await updateDeviceMetadata(deviceMac, req.body || {});
+        mqttSubscriptionEvents.emit("devices:changed");
+        res.json(device);
+    } catch (err) {
+        console.error("Error updating device metadata:", err);
+        const status = err.message === "device_mac is required" ? 400 : 500;
+        res.status(status).json({ error: err.message });
+    }
+});
+
+router.delete("/:deviceMac", async (req, res) => {
+    try {
+        const { deviceMac } = req.params;
+        const deleted = await deleteDeviceMetadata(deviceMac);
+        if (!deleted) {
+            return res.status(404).json({ error: "Device not found" });
+        }
+        mqttSubscriptionEvents.emit("devices:changed");
+        res.status(204).send();
+    } catch (err) {
+        console.error("Error deleting device metadata:", err);
+        const status = err.message === "device_mac is required" ? 400 : 500;
+        res.status(status).json({ error: err.message });
+    }
+});
 
 router.get("/:deviceMac",async(req,res)=>{
     try {

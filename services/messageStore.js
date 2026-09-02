@@ -1,4 +1,5 @@
 const pool = require("../controller/db_connection");
+const { ensureDeviceMetadata } = require("../controller/devices");
 
 // Calculate AQI from PM2.5 using CPCB (India) breakpoints
 function calculateAqiFromPm25(pm25) {
@@ -40,7 +41,7 @@ const savePayload = async (payload) => {
         // New flat format
         deviceMac = message.device_mac;
         timeStatus = message.status?.time_status || null;
-        deviceTime = message.received_at || new Date().toISOString();
+        deviceTime = message.device_time || message.received_at || new Date().toISOString();
         
         const readings = message.readings || {};
         temperature = readings.temperature;
@@ -129,6 +130,7 @@ const savePayload = async (payload) => {
     ];
 
     const result = await pool.query(query, values);
+    await ensureDeviceMetadata(result.rows[0].device_mac);
     return result.rows[0];
 }
 

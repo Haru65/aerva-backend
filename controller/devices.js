@@ -1,5 +1,185 @@
 const pool = require("../controller/db_connection");
 
+const DEFAULT_SPARK = [10, 9, 11, 8, 10, 9, 11, 10];
+const ONLINE_WINDOW_MS = 5 * 60 * 1000;
+
+function normalizeDeviceMac(deviceMac) {
+    return String(deviceMac || "").trim().toUpperCase();
+}
+
+function fallbackDeviceName(deviceMac) {
+    const mac = normalizeDeviceMac(deviceMac);
+    return mac ? `Device ${mac.slice(-4)}` : "AERVA Device";
+}
+
+function statusFromAqi(aqi) {
+    if (aqi == null || Number.isNaN(Number(aqi))) return "off";
+    const value = Number(aqi);
+    if (value <= 100) return "green";
+    if (value <= 300) return "warn";
+    return "bad";
+}
+
+function isDeviceOnline(lastSeen) {
+    if (!lastSeen) return false;
+    const lastSeenMs = new Date(lastSeen).getTime();
+    if (Number.isNaN(lastSeenMs)) return false;
+    return Date.now() - lastSeenMs <= ONLINE_WINDOW_MS;
+}
+
+function rowToDevice(row) {
+    const aqi = row.aqi == null ? null : Number(row.aqi);
+    const lastSeen = row.last_seen || null;
+    const online = isDeviceOnline(lastSeen);
+    const airStatus = statusFromAqi(aqi);
+    return {
+        id: row.device_mac,
+        mac: row.device_mac,
+        name: row.name || fallbackDeviceName(row.device_mac),
+        room: row.room || "other",
+        sn: row.serial_number || "",
+        aqi,
+        status: online ? airStatus : "off",
+        airStatus,
+        connection_status: online ? "online" : "offline",
+        online,
+        last_seen: lastSeen,
+        device_time: row.device_time || null,
+        spark: Array.isArray(row.spark) && row.spark.length ? row.spark : DEFAULT_SPARK,
+        metadata: row.metadata || {}
+    };
+}
+
+const listDeviceMetadata = async () => {
+    const result = await pool.query(`
+        WITH latest_payload AS (
+            SELECT DISTINCT ON (UPPER(TRIM(device_mac)))
+                UPPER(TRIM(device_mac)) AS device_mac,
+                aqi,
+                received_at AS last_seen,
+                device_time
+            FROM mqtt_payload
+            WHERE device_mac IS NOT NULL AND TRIM(device_mac) <> ''
+            ORDER BY UPPER(TRIM(device_mac)), received_at DESC
+        )
+        SELECT
+            d.device_mac,
+            d.name,
+            d.room,
+            d.serial_number,
+            d.spark,
+            d.metadata,
+            latest_payload.aqi,
+            latest_payload.last_seen,
+            latest_payload.device_time
+        FROM devices d
+        LEFT JOIN latest_payload ON latest_payload.device_mac = UPPER(TRIM(d.device_mac))
+        ORDER BY d.created_at ASC, d.name ASC
+    `);
+
+    return result.rows.map(rowToDevice);
+};
+
+const upsertDeviceMetadata = async ({ device_mac, name, room, sn, serial_number, spark, metadata }) => {
+    const deviceMac = normalizeDeviceMac(device_mac);
+    if (!deviceMac) {
+        throw new Error("device_mac is required");
+    }
+
+    const result = await pool.query(`
+        INSERT INTO devices (
+            device_mac,
+            name,
+            room,
+            serial_number,
+            spark,
+            metadata
+        )
+        VALUES ($1, $2, $3, $4, $5::jsonb, $6::jsonb)
+        ON CONFLICT (device_mac) DO UPDATE SET
+            name = EXCLUDED.name,
+            room = EXCLUDED.room,
+            serial_number = EXCLUDED.serial_number,
+            spark = EXCLUDED.spark,
+            metadata = EXCLUDED.metadata,
+            updated_at = NOW()
+        RETURNING
+            device_mac,
+            name,
+            room,
+            serial_number,
+            spark,
+            metadata,
+            NULL::numeric AS aqi,
+            NULL::timestamp AS last_seen,
+            NULL::varchar AS device_time
+    `, [
+        deviceMac,
+        String(name || fallbackDeviceName(deviceMac)).trim(),
+        String(room || "other").trim(),
+        sn || serial_number || null,
+        JSON.stringify(Array.isArray(spark) && spark.length ? spark : DEFAULT_SPARK),
+        JSON.stringify(metadata || {})
+    ]);
+
+    return rowToDevice(result.rows[0]);
+};
+
+const updateDeviceMetadata = async (deviceMac, changes) => {
+    const currentMac = normalizeDeviceMac(deviceMac);
+    if (!currentMac) {
+        throw new Error("device_mac is required");
+    }
+
+    const current = await pool.query("SELECT * FROM devices WHERE device_mac = $1", [currentMac]);
+    const existing = current.rows[0] || {
+        device_mac: currentMac,
+        name: fallbackDeviceName(currentMac),
+        room: "other",
+        serial_number: null,
+        spark: DEFAULT_SPARK,
+        metadata: {}
+    };
+
+    return upsertDeviceMetadata({
+        device_mac: currentMac,
+        name: changes.name ?? existing.name,
+        room: changes.room ?? existing.room,
+        sn: changes.sn ?? changes.serial_number ?? existing.serial_number,
+        spark: changes.spark ?? existing.spark,
+        metadata: changes.metadata ?? existing.metadata
+    });
+};
+
+const deleteDeviceMetadata = async (deviceMac) => {
+    const currentMac = normalizeDeviceMac(deviceMac);
+    if (!currentMac) {
+        throw new Error("device_mac is required");
+    }
+
+    const result = await pool.query(
+        "DELETE FROM devices WHERE device_mac = $1 RETURNING device_mac",
+        [currentMac]
+    );
+
+    return result.rowCount > 0;
+};
+
+const ensureDeviceMetadata = async (deviceMac) => {
+    const currentMac = normalizeDeviceMac(deviceMac);
+    if (!currentMac) return null;
+
+    await pool.query(`
+        INSERT INTO devices (device_mac, name, room, spark)
+        VALUES ($1, $2, 'other', $3::jsonb)
+        ON CONFLICT (device_mac) DO NOTHING
+    `, [
+        currentMac,
+        fallbackDeviceName(currentMac),
+        JSON.stringify(DEFAULT_SPARK)
+    ]);
+};
+
 
 
 const AllowedMetrics = {
@@ -190,5 +370,11 @@ const liveAggregateData = async (device_mac,metric,range) => {
                 
                 
                 
-module.exports = { liveAggregateData
+module.exports = {
+    liveAggregateData,
+    listDeviceMetadata,
+    upsertDeviceMetadata,
+    updateDeviceMetadata,
+    deleteDeviceMetadata,
+    ensureDeviceMetadata
 };
