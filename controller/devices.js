@@ -1,4 +1,5 @@
 const pool = require("../controller/db_connection");
+const { assertRegisteredActiveDevice } = require("./deviceRegistry");
 
 const DEFAULT_SPARK = [10, 9, 11, 8, 10, 9, 11, 10];
 const ONLINE_WINDOW_MS = 5 * 60 * 1000;
@@ -92,6 +93,7 @@ const upsertDeviceMetadata = async ({ device_mac, name, room, sn, serial_number,
     if (!tenantId) {
         throw new Error("tenant_id is required");
     }
+    const registeredDevice = await assertRegisteredActiveDevice(deviceMac);
 
     const existing = await pool.query(
         "SELECT tenant_id FROM devices WHERE device_mac = $1",
@@ -137,7 +139,7 @@ const upsertDeviceMetadata = async ({ device_mac, name, room, sn, serial_number,
         tenantId,
         String(name || fallbackDeviceName(deviceMac)).trim(),
         String(room || "other").trim(),
-        sn || serial_number || null,
+        sn || serial_number || registeredDevice.serialNumber || null,
         JSON.stringify(Array.isArray(spark) && spark.length ? spark : DEFAULT_SPARK),
         JSON.stringify(metadata || {})
     ]);

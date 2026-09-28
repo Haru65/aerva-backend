@@ -22,6 +22,7 @@ function createToken(user) {
         sub: String(user.id),
         tenantId: user.tenant_id,
         email: user.email,
+        role: user.role || "owner",
         exp: Date.now() + TOKEN_TTL_MS
     };
     const encodedPayload = base64url(payload);
@@ -57,7 +58,8 @@ function optionalAuth(req, _res, next) {
     req.user = payload ? {
         id: payload.sub,
         tenantId: payload.tenantId,
-        email: payload.email
+        email: payload.email,
+        role: payload.role || "owner"
     } : null;
     next();
 }
@@ -71,9 +73,19 @@ function requireAuth(req, res, next) {
     });
 }
 
+function requireSuperAdmin(req, res, next) {
+    requireAuth(req, res, () => {
+        if (req.user?.role !== "superadmin") {
+            return res.status(403).json({ error: "Superadmin access required" });
+        }
+        next();
+    });
+}
+
 module.exports = {
     createToken,
     verifyToken,
     optionalAuth,
-    requireAuth
+    requireAuth,
+    requireSuperAdmin
 };

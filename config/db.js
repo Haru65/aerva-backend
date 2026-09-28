@@ -1,4 +1,6 @@
 const {client} = require ("pg");
+const bcrypt = require("bcrypt");
+const crypto = require("crypto");
 
 const pool = require("../controller/db_connection");
 
@@ -36,6 +38,7 @@ async function createSchema() {
         WHERE tenant_id IS NULL OR workspace IS NULL OR role IS NULL
     `);
     await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_users_tenant_id ON users (tenant_id)`);
+    await ensureSuperAdminUser();
 
     const payloadTableQuery = `
     CREATE TABLE IF NOT EXISTS mqtt_payload (
@@ -83,6 +86,29 @@ async function createSchema() {
 
     await pool.query(`ALTER TABLE devices ADD COLUMN IF NOT EXISTS tenant_id VARCHAR(120)`);
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_devices_tenant_id ON devices (tenant_id)`);
+
+    const deviceRegistryTableQuery = `
+    CREATE TABLE IF NOT EXISTS device_registry (
+        device_mac VARCHAR(60) PRIMARY KEY,
+        serial_number VARCHAR(80),
+        model VARCHAR(80),
+        batch VARCHAR(80),
+        status VARCHAR(30) DEFAULT 'active',
+        metadata JSONB DEFAULT '{}'::jsonb,
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW()
+    )`;
+    await pool.query(deviceRegistryTableQuery);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_device_registry_status ON device_registry (status)`);
+
+    await pool.query(`
+        INSERT INTO device_registry (device_mac, serial_number, model, batch, status)
+        VALUES
+            ('8857217641FC', 'H488', 'AERVA Home', 'dev-seed', 'active'),
+            ('489D31D02758', 'H491', 'AERVA Home', 'dev-seed', 'active'),
+            ('EC64C96EDA3C', 'H487', 'AERVA Home', 'dev-seed', 'active')
+        ON CONFLICT (device_mac) DO NOTHING
+    `);
 
     const alertRulesTableQuery = `
     CREATE TABLE IF NOT EXISTS alert_rules (
@@ -209,6 +235,46 @@ async function createSchema() {
 
     console.log("Tables created successfully");
     
+}
+
+async function ensureSuperAdminUser() {
+    const email = String(process.env.SUPERADMIN_EMAIL || "").trim().toLowerCase();
+    const password = String(process.env.SUPERADMIN_PASSWORD || "");
+    const name = String(process.env.SUPERADMIN_NAME || "AERVA Superadmin").trim();
+
+    if (!email || !password) {
+        return;
+    }
+
+    const passwordHash = await bcrypt.hash(password, 10);
+    const tenantId = `superadmin_${crypto.createHash("sha256").update(email).digest("hex").slice(0, 16)}`;
+
+    await pool.query(`
+        INSERT INTO users (
+            username,
+            name,
+            email,
+            password_hash,
+            tenant_id,
+            workspace,
+            role
+        )
+        VALUES ($1,$2,$3,$4,$5,'AERVA Admin','superadmin')
+        ON CONFLICT (email) DO UPDATE SET
+            username = EXCLUDED.username,
+            name = EXCLUDED.name,
+            password_hash = EXCLUDED.password_hash,
+            tenant_id = COALESCE(users.tenant_id, EXCLUDED.tenant_id),
+            workspace = 'AERVA Admin',
+            role = 'superadmin',
+            updated_at = NOW()
+    `, [
+        email,
+        name,
+        email,
+        passwordHash,
+        tenantId
+    ]);
 }
 
 module.exports = createSchema;

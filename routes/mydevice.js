@@ -34,7 +34,9 @@ router.post("/", async (req, res) => {
             ? 400
             : err.message === "device already claimed"
                 ? 409
-                : 500;
+                : err.message === "device is not registered" || err.message === "device is not active"
+                    ? 403
+                    : 500;
         res.status(status).json({ error: err.message });
     }
 });
