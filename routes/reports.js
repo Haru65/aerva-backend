@@ -2,6 +2,9 @@ const express = require("express");
 const router = express.Router();
 const { exportExcel } = require("../services/exportExcelService");
 const { exportPDF } = require("../services/exportPDF.js");
+const { requireAuth } = require("../middleware/auth");
+
+router.use(requireAuth);
 
 router.get("/excel", async (req, res) => {
     try {
@@ -11,7 +14,7 @@ router.get("/excel", async (req, res) => {
             return res.status(400).json({ error: "Missing required query parameters" });
         }
 
-        const data = await exportExcel(device_mac, range);
+        const data = await exportExcel(device_mac, range, req.user.tenantId);
         if (!data || data.length === 0) {
             return res.status(404).json({ error: "No data found for the specified device and range" });
         }
@@ -36,7 +39,7 @@ router.get("/pdf", async (req, res) => {
             return res.status(400).json({ error: "Missing required query parameters" });
         }
 
-        const data = await exportPDF(device_mac, range);
+        const data = await exportPDF(device_mac, range, req.user.tenantId);
         if (!data || data.length === 0) {
             return res.status(404).json({ error: "No data found for the specified device and range" });
         }

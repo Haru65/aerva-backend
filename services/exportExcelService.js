@@ -63,9 +63,9 @@ const rangeToInterval = {
     "30d": "30 days"
 };
 
-const exportExcel = async (deviceMac, range) => {
+const exportExcel = async (deviceMac, range, tenantId) => {
     try {
-        const data = await reportData(deviceMac, range);
+        const data = await reportData(deviceMac, range, tenantId);
         if (!data || data.length === 0) {
             throw new Error("No data found for the specified device and range");
         }

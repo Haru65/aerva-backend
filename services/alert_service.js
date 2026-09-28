@@ -21,6 +21,7 @@ function normalizeDeviceMac(deviceMac) {
 function rowToRule(row) {
     return {
         id: row.id,
+        tenantId: row.tenant_id || "",
         deviceMac: row.device_mac || "",
         sensor: row.sensor,
         condition: row.condition,
@@ -39,6 +40,7 @@ function rowToAlertEvent(row) {
 
     return {
         id: row.id,
+        tenantId: row.tenant_id || "",
         ruleId: row.rule_id,
         deviceMac: row.device_mac,
         deviceName: row.device_name || row.name || fallbackDeviceName(row.device_mac),
@@ -72,8 +74,9 @@ async function evaluateAlertRulesForReading(readingRow) {
 
     const deviceMac = normalizeDeviceMac(readingRow.device_mac);
     const readingTime = readingRow.received_at || new Date();
-    const rules = await listEnabledAlertRules(deviceMac);
     const device = await getDevice(deviceMac);
+    if (!device?.tenant_id) return [];
+    const rules = await listEnabledAlertRules(deviceMac, device.tenant_id);
     const results = [];
 
     for (const rule of rules) {
@@ -84,17 +87,15 @@ async function evaluateAlertRulesForReading(readingRow) {
     return results;
 }
 
-async function listAlertEvents({ range = "24h", status = "all", limit = 100 } = {}) {
+async function listAlertEvents({ range = "24h", status = "all", limit = 100 } = {}, tenantId = null) {
+    if (!tenantId) return [];
     await cleanupOldAlertEvents();
 
     const safeLimit = Math.max(1, Math.min(250, Number.parseInt(limit, 10) || 100));
     const rangeInterval = toRangeInterval(range);
-    const values = [rangeInterval, safeLimit];
     const statusClause = status === "active" || status === "cleared"
-        ? "AND ae.status = $3"
+        ? "AND ae.status = $4"
         : "";
-
-    if (statusClause) values.push(status);
 
     const result = await pool.query(`
         SELECT
@@ -105,10 +106,11 @@ async function listAlertEvents({ range = "24h", status = "all", limit = 100 } = 
         FROM alert_events ae
         LEFT JOIN devices d ON UPPER(TRIM(d.device_mac)) = UPPER(TRIM(ae.device_mac))
         WHERE ae.triggered_at >= NOW() - $1::interval
+          AND ae.tenant_id = $3
         ${statusClause}
         ORDER BY ae.triggered_at DESC, ae.id DESC
         LIMIT $2
-    `, values);
+    `, statusClause ? [rangeInterval, safeLimit, tenantId, status] : [rangeInterval, safeLimit, tenantId]);
 
     return result.rows.map(row => rowToAlertEvent({
         ...row,
@@ -118,7 +120,8 @@ async function listAlertEvents({ range = "24h", status = "all", limit = 100 } = 
     }));
 }
 
-async function getAlertSummary() {
+async function getAlertSummary(tenantId = null) {
+    if (!tenantId) return { active: 0, last24h: 0, last7d: 0 };
     await cleanupOldAlertEvents();
 
     const result = await pool.query(`
@@ -128,7 +131,8 @@ async function getAlertSummary() {
             COUNT(*) FILTER (WHERE triggered_at >= NOW() - INTERVAL '7 days')::int AS last_7d
         FROM alert_events
         WHERE triggered_at >= NOW() - INTERVAL '30 days'
-    `);
+          AND tenant_id = $1
+    `, [tenantId]);
 
     return {
         active: Number(result.rows[0]?.active || 0),
@@ -173,13 +177,14 @@ async function triggerAlert(rule, readingRow, device, readingValue, readingTime)
         FROM alert_events
         WHERE rule_id = $1
           AND device_mac = $2
+          AND tenant_id = $6
           AND status = 'active'
           AND sensor = $3
           AND condition = $4
           AND threshold_value = $5
         ORDER BY triggered_at DESC
         LIMIT 1
-    `, [rule.id, deviceMac, rule.sensor, rule.condition, rule.value]);
+    `, [rule.id, deviceMac, rule.sensor, rule.condition, rule.value, rule.tenantId]);
 
     const eventDraft = buildAlertEvent(rule, readingRow, device, readingValue, readingTime);
 
@@ -209,11 +214,11 @@ async function triggerAlert(rule, readingRow, device, readingValue, readingTime)
             eventDraft.emailTo || null
         ]);
         let event = rowToAlertEvent(updated.rows[0]);
-        emitAlertEvent({ type: "updated", event });
+        emitAlertEvent({ type: "updated", tenantId: rule.tenantId, event });
 
         if (shouldSendEmail && event.emailTo) {
             event = await sendAndRecordAlertEmail(event);
-            emitAlertEvent({ type: "updated", event });
+            emitAlertEvent({ type: "updated", tenantId: rule.tenantId, event });
         }
 
         return event;
@@ -222,6 +227,7 @@ async function triggerAlert(rule, readingRow, device, readingValue, readingTime)
     const created = await pool.query(`
         INSERT INTO alert_events (
             rule_id,
+            tenant_id,
             device_mac,
             device_name,
             room,
@@ -240,10 +246,11 @@ async function triggerAlert(rule, readingRow, device, readingValue, readingTime)
             last_seen_at,
             metadata
         )
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'active',$12,$13,$14,$15,$15,$16::jsonb)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'active',$13,$14,$15,$16,$16,$17::jsonb)
         RETURNING *
     `, [
         rule.id,
+        rule.tenantId,
         eventDraft.deviceMac,
         eventDraft.deviceName,
         eventDraft.room,
@@ -262,11 +269,11 @@ async function triggerAlert(rule, readingRow, device, readingValue, readingTime)
     ]);
 
     let event = rowToAlertEvent(created.rows[0]);
-    emitAlertEvent({ type: "triggered", event });
+    emitAlertEvent({ type: "triggered", tenantId: rule.tenantId, event });
 
     if (event.emailTo) {
         event = await sendAndRecordAlertEmail(event);
-        emitAlertEvent({ type: "updated", event });
+        emitAlertEvent({ type: "updated", tenantId: rule.tenantId, event });
     }
 
     return event;
@@ -281,6 +288,7 @@ async function clearStaleActiveAlerts(rule, deviceMac, readingTime, readingValue
             reading_value = $7
         WHERE rule_id = $1
           AND device_mac = $2
+          AND tenant_id = $8
           AND status = 'active'
           AND NOT (
               sensor = $3
@@ -288,10 +296,10 @@ async function clearStaleActiveAlerts(rule, deviceMac, readingTime, readingValue
               AND threshold_value = $5
           )
         RETURNING *
-    `, [rule.id, deviceMac, rule.sensor, rule.condition, rule.value, readingTime, readingValue]);
+    `, [rule.id, deviceMac, rule.sensor, rule.condition, rule.value, readingTime, readingValue, rule.tenantId]);
 
     for (const row of result.rows) {
-        emitAlertEvent({ type: "cleared", event: rowToAlertEvent(row) });
+        emitAlertEvent({ type: "cleared", tenantId: rule.tenantId, event: rowToAlertEvent(row) });
     }
 }
 
@@ -306,8 +314,8 @@ function shouldSendEmailForActiveAlert(currentRow, nextEmailTo) {
 
 async function clearActiveAlert(rule, deviceMac, readingValue, readingTime) {
     await pool.query(
-        "DELETE FROM alert_rule_state WHERE rule_id = $1 AND device_mac = $2",
-        [rule.id, deviceMac]
+        "DELETE FROM alert_rule_state WHERE rule_id = $1 AND device_mac = $2 AND tenant_id = $3",
+        [rule.id, deviceMac, rule.tenantId]
     );
 
     const result = await pool.query(`
@@ -318,14 +326,15 @@ async function clearActiveAlert(rule, deviceMac, readingValue, readingTime) {
             reading_value = $4
         WHERE rule_id = $1
           AND device_mac = $2
+          AND tenant_id = $5
           AND status = 'active'
         RETURNING *
-    `, [rule.id, deviceMac, readingTime, readingValue]);
+    `, [rule.id, deviceMac, readingTime, readingValue, rule.tenantId]);
 
     if (!result.rows[0]) return null;
 
     const event = rowToAlertEvent(result.rows[0]);
-    emitAlertEvent({ type: "cleared", event });
+    emitAlertEvent({ type: "cleared", tenantId: rule.tenantId, event });
     return event;
 }
 
@@ -398,25 +407,26 @@ function formatEmailProviderError(error) {
     return message;
 }
 
-async function listEnabledAlertRules(deviceMac) {
+async function listEnabledAlertRules(deviceMac, tenantId) {
     const result = await pool.query(`
         SELECT *
         FROM alert_rules
         WHERE enabled = true
+          AND tenant_id = $2
           AND (
               device_mac IS NULL
               OR TRIM(device_mac) = ''
               OR UPPER(TRIM(device_mac)) = $1
           )
         ORDER BY created_at ASC, id ASC
-    `, [normalizeDeviceMac(deviceMac)]);
+    `, [normalizeDeviceMac(deviceMac), tenantId]);
 
     return result.rows.map(rowToRule);
 }
 
 async function getDevice(deviceMac) {
     const result = await pool.query(`
-        SELECT device_mac, name, room, serial_number
+        SELECT device_mac, tenant_id, name, room, serial_number
         FROM devices
         WHERE UPPER(TRIM(device_mac)) = $1
         LIMIT 1
@@ -429,17 +439,18 @@ async function upsertAlertState(rule, deviceMac, readingValue, readingTime) {
     const result = await pool.query(`
         INSERT INTO alert_rule_state (
             rule_id,
+            tenant_id,
             device_mac,
             condition_started_at,
             last_seen_at,
             last_value
         )
-        VALUES ($1,$2,$3,$3,$4)
+        VALUES ($1,$2,$3,$4,$4,$5)
         ON CONFLICT (rule_id, device_mac) DO UPDATE SET
             last_seen_at = EXCLUDED.last_seen_at,
             last_value = EXCLUDED.last_value
         RETURNING *
-    `, [rule.id, deviceMac, readingTime, readingValue]);
+    `, [rule.id, rule.tenantId, deviceMac, readingTime, readingValue]);
 
     return result.rows[0];
 }

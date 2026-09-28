@@ -21,7 +21,9 @@ async function getDeviceMacs() {
     const result = await pool.query(`
         SELECT device_mac
         FROM devices
-        WHERE device_mac IS NOT NULL AND TRIM(device_mac) <> ''
+        WHERE device_mac IS NOT NULL
+          AND TRIM(device_mac) <> ''
+          AND tenant_id IS NOT NULL
         ORDER BY created_at ASC, name ASC
     `);
 

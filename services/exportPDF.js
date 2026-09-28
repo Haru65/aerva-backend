@@ -4,9 +4,9 @@ const {reportData} = require("../controller/reportData");
 const path = require("path");
 const {createWriteStream} = require("fs");
 
-const exportPDF = async (deviceMac,  range) => {
+const exportPDF = async (deviceMac,  range, tenantId) => {
     try {
-        const data = await reportData(deviceMac, range);
+        const data = await reportData(deviceMac, range, tenantId);
 
         if (!data || data.length === 0) {
             throw new Error("No data available for the specified device and range.");

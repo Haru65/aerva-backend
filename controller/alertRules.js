@@ -46,21 +46,34 @@ function normalizeAlertRule(rule = {}) {
     };
 }
 
-const listAlertRules = async () => {
+const listAlertRules = async (tenantId) => {
+    if (!tenantId) return [];
+
     const result = await pool.query(`
         SELECT *
         FROM alert_rules
+        WHERE tenant_id = $1
         ORDER BY created_at ASC, id ASC
-    `);
+    `, [tenantId]);
 
     return result.rows.map(rowToAlertRule);
 };
 
-const createAlertRule = async (rule) => {
+const createAlertRule = async (rule, tenantId) => {
+    if (!tenantId) throw new Error("tenant_id is required");
     const normalized = normalizeAlertRule(rule);
+    const existing = await pool.query(
+        "SELECT tenant_id FROM alert_rules WHERE id = $1",
+        [normalized.id]
+    );
+    if (existing.rows[0]?.tenant_id && existing.rows[0].tenant_id !== tenantId) {
+        throw new Error("Alert rule id is already used");
+    }
+
     const result = await pool.query(`
         INSERT INTO alert_rules (
             id,
+            tenant_id,
             device_mac,
             sensor,
             condition,
@@ -72,8 +85,9 @@ const createAlertRule = async (rule) => {
             email_on,
             enabled
         )
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
         ON CONFLICT (id) DO UPDATE SET
+            tenant_id = EXCLUDED.tenant_id,
             device_mac = EXCLUDED.device_mac,
             sensor = EXCLUDED.sensor,
             condition = EXCLUDED.condition,
@@ -88,6 +102,7 @@ const createAlertRule = async (rule) => {
         RETURNING *
     `, [
         normalized.id,
+        tenantId,
         normalized.deviceMac || null,
         normalized.sensor,
         normalized.condition,
@@ -103,22 +118,23 @@ const createAlertRule = async (rule) => {
     return rowToAlertRule(result.rows[0]);
 };
 
-const updateAlertRule = async (id, changes = {}) => {
-    const current = await pool.query("SELECT * FROM alert_rules WHERE id = $1", [id]);
+const updateAlertRule = async (id, changes = {}, tenantId) => {
+    if (!tenantId) throw new Error("tenant_id is required");
+    const current = await pool.query("SELECT * FROM alert_rules WHERE id = $1 AND tenant_id = $2", [id, tenantId]);
     if (!current.rows[0]) return null;
 
     const existing = rowToAlertRule(current.rows[0]);
-    const saved = await createAlertRule({ ...existing, ...changes, id });
+    const saved = await createAlertRule({ ...existing, ...changes, id }, tenantId);
 
     if (shouldResetRuntimeState(existing, saved)) {
-        await resetAlertRuntimeState(id);
+        await resetAlertRuntimeState(id, tenantId);
     }
 
     return saved;
 };
 
-const deleteAlertRule = async (id) => {
-    const result = await pool.query("DELETE FROM alert_rules WHERE id = $1 RETURNING id", [id]);
+const deleteAlertRule = async (id, tenantId) => {
+    const result = await pool.query("DELETE FROM alert_rules WHERE id = $1 AND tenant_id = $2 RETURNING id", [id, tenantId]);
     return result.rowCount > 0;
 };
 
@@ -133,16 +149,17 @@ function shouldResetRuntimeState(before, after) {
         before.enabled !== after.enabled;
 }
 
-async function resetAlertRuntimeState(ruleId) {
-    await pool.query("DELETE FROM alert_rule_state WHERE rule_id = $1", [ruleId]);
+async function resetAlertRuntimeState(ruleId, tenantId) {
+    await pool.query("DELETE FROM alert_rule_state WHERE rule_id = $1 AND tenant_id = $2", [ruleId, tenantId]);
     await pool.query(`
         UPDATE alert_events
         SET status = 'cleared',
             cleared_at = COALESCE(cleared_at, NOW()),
             last_seen_at = NOW()
         WHERE rule_id = $1
+          AND tenant_id = $2
           AND status = 'active'
-    `, [ruleId]);
+    `, [ruleId, tenantId]);
 }
 
 function normalizeMac(value) {

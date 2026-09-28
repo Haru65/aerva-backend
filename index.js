@@ -13,6 +13,7 @@ const dashboa = require("./routes/dash");
 const mydevice = require("./routes/mydevice");
 const exportExcel = require("./routes/reports")
 const alerts = require("./routes/alerts")
+const auth = require("./routes/auth")
 
 
 // Middleware to parse JSON requests
@@ -35,6 +36,7 @@ app.get("/",(req,res)=>{
 })
 
 
+app.use("/api/auth", auth);
 app.use("/api/dashboard", dashboa);
 
 app.use("/devices", mydevice);

@@ -1,14 +1,19 @@
 const pool = require("../controller/db_connection");
 
 
-const retrivelLatestData = async (deviceMac = null) => {
+const retrivelLatestData = async (deviceMac = null, tenantId = null) => {
+    if (!tenantId) return null;
+
     try{
     const result = await pool.query(
-        `SELECT * FROM mqtt_payload
-         ${deviceMac ? "WHERE UPPER(TRIM(device_mac)) = $1" : ""}
-         ORDER BY received_at DESC
+        `SELECT mp.*
+         FROM mqtt_payload mp
+         INNER JOIN devices d ON UPPER(TRIM(d.device_mac)) = UPPER(TRIM(mp.device_mac))
+         WHERE d.tenant_id = $1
+           ${deviceMac ? "AND UPPER(TRIM(mp.device_mac)) = $2" : ""}
+         ORDER BY mp.received_at DESC
          LIMIT 1`,
-        deviceMac ? [String(deviceMac).trim().toUpperCase()] : []
+        deviceMac ? [tenantId, String(deviceMac).trim().toUpperCase()] : [tenantId]
     );
     
     const row = result.rows[0];
@@ -64,7 +69,11 @@ const rangeToInterval = {
     "30d": "30 days"
 };
 
-const graphDataRetrieval = async ({ deviceMac, metric, range }) => {
+const graphDataRetrieval = async ({ deviceMac, metric, range, tenantId = null }) => {
+    if (!tenantId) {
+        return { device_mac: deviceMac, metric, range, points: [] };
+    }
+
     const columnName = allowedMetrics[metric];
     if (!columnName) {
         throw new Error(`Invalid metric: ${metric}`);
@@ -89,7 +98,9 @@ const graphDataRetrieval = async ({ deviceMac, metric, range }) => {
                       received_at
                     ) AS graph_time
                 FROM mqtt_payload
-                WHERE UPPER(TRIM(device_mac)) = UPPER(TRIM($1))
+                INNER JOIN devices d ON UPPER(TRIM(d.device_mac)) = UPPER(TRIM(mqtt_payload.device_mac))
+                WHERE UPPER(TRIM(mqtt_payload.device_mac)) = UPPER(TRIM($1))
+                  AND d.tenant_id = $3
             )
             SELECT
                 graph_time AS time,
@@ -100,7 +111,7 @@ const graphDataRetrieval = async ({ deviceMac, metric, range }) => {
               AND graph_time >= NOW() - $2::interval
               AND graph_time <= NOW()
             ORDER BY graph_time ASC`,
-            [deviceMac, interval]
+            [deviceMac, interval, tenantId]
         );
 
         return {

@@ -9,10 +9,13 @@ const {
     listAlertEvents,
     getAlertSummary
 } = require("../services/alert_service");
+const { requireAuth } = require("../middleware/auth");
+
+router.use(requireAuth);
 
 router.get("/", async (req, res) => {
     try {
-        const alerts = await listAlertRules();
+        const alerts = await listAlertRules(req.user.tenantId);
         res.json({ alerts });
     } catch (err) {
         console.error("Error retrieving alert rules:", err);
@@ -22,7 +25,7 @@ router.get("/", async (req, res) => {
 
 router.get("/events", async (req, res) => {
     try {
-        const events = await listAlertEvents(req.query || {});
+        const events = await listAlertEvents(req.query || {}, req.user.tenantId);
         res.json({ events });
     } catch (err) {
         console.error("Error retrieving alert events:", err);
@@ -32,7 +35,7 @@ router.get("/events", async (req, res) => {
 
 router.get("/summary", async (req, res) => {
     try {
-        const summary = await getAlertSummary();
+        const summary = await getAlertSummary(req.user.tenantId);
         res.json(summary);
     } catch (err) {
         console.error("Error retrieving alert summary:", err);
@@ -42,7 +45,7 @@ router.get("/summary", async (req, res) => {
 
 router.post("/", async (req, res) => {
     try {
-        const alert = await createAlertRule(req.body || {});
+        const alert = await createAlertRule(req.body || {}, req.user.tenantId);
         res.status(201).json(alert);
     } catch (err) {
         console.error("Error creating alert rule:", err);
@@ -52,7 +55,7 @@ router.post("/", async (req, res) => {
 
 router.put("/:id", async (req, res) => {
     try {
-        const alert = await updateAlertRule(req.params.id, req.body || {});
+        const alert = await updateAlertRule(req.params.id, req.body || {}, req.user.tenantId);
         if (!alert) {
             return res.status(404).json({ error: "Alert rule not found" });
         }
@@ -65,7 +68,7 @@ router.put("/:id", async (req, res) => {
 
 router.delete("/:id", async (req, res) => {
     try {
-        const deleted = await deleteAlertRule(req.params.id);
+        const deleted = await deleteAlertRule(req.params.id, req.user.tenantId);
         if (!deleted) {
             return res.status(404).json({ error: "Alert rule not found" });
         }

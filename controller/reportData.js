@@ -61,7 +61,9 @@ const rangeToInterval = {
     "30d": "30 days"
 };
 
-const reportData = async (deviceMac, range) => {
+const reportData = async (deviceMac, range, tenantId = null) => {
+    if (!tenantId) return [];
+
     try{
         const interval = rangeToInterval[range];
         if (!interval) {
@@ -77,13 +79,15 @@ const reportData = async (deviceMac, range) => {
                         THEN device_time::timestamp
                         ELSE NULL
                     END AS report_device_time
-                FROM mqtt_payload
-                WHERE device_mac = $1
+                FROM mqtt_payload mp
+                INNER JOIN devices d ON UPPER(TRIM(d.device_mac)) = UPPER(TRIM(mp.device_mac))
+                WHERE UPPER(TRIM(mp.device_mac)) = UPPER(TRIM($1))
+                  AND d.tenant_id = $3
             )
             SELECT * FROM report_rows
             WHERE report_device_time >= (NOW() - $2::interval)::timestamp
             ORDER BY report_device_time DESC`,
-            [deviceMac, interval]
+            [deviceMac, interval, tenantId]
         );
          
         return (result.rows.map(row => ({

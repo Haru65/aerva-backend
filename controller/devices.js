@@ -50,7 +50,9 @@ function rowToDevice(row) {
     };
 }
 
-const listDeviceMetadata = async () => {
+const listDeviceMetadata = async (tenantId) => {
+    if (!tenantId) return [];
+
     const result = await pool.query(`
         WITH latest_payload AS (
             SELECT DISTINCT ON (UPPER(TRIM(device_mac)))
@@ -64,6 +66,7 @@ const listDeviceMetadata = async () => {
         )
         SELECT
             d.device_mac,
+            d.tenant_id,
             d.name,
             d.room,
             d.serial_number,
@@ -74,29 +77,44 @@ const listDeviceMetadata = async () => {
             latest_payload.device_time
         FROM devices d
         LEFT JOIN latest_payload ON latest_payload.device_mac = UPPER(TRIM(d.device_mac))
+        WHERE d.tenant_id = $1
         ORDER BY d.created_at ASC, d.name ASC
-    `);
+    `, [tenantId]);
 
     return result.rows.map(rowToDevice);
 };
 
-const upsertDeviceMetadata = async ({ device_mac, name, room, sn, serial_number, spark, metadata }) => {
+const upsertDeviceMetadata = async ({ device_mac, name, room, sn, serial_number, spark, metadata }, tenantId = null) => {
     const deviceMac = normalizeDeviceMac(device_mac);
     if (!deviceMac) {
         throw new Error("device_mac is required");
+    }
+    if (!tenantId) {
+        throw new Error("tenant_id is required");
+    }
+
+    const existing = await pool.query(
+        "SELECT tenant_id FROM devices WHERE device_mac = $1",
+        [deviceMac]
+    );
+    const existingTenantId = existing.rows[0]?.tenant_id || null;
+    if (existingTenantId && existingTenantId !== tenantId) {
+        throw new Error("device already claimed");
     }
 
     const result = await pool.query(`
         INSERT INTO devices (
             device_mac,
+            tenant_id,
             name,
             room,
             serial_number,
             spark,
             metadata
         )
-        VALUES ($1, $2, $3, $4, $5::jsonb, $6::jsonb)
+        VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7::jsonb)
         ON CONFLICT (device_mac) DO UPDATE SET
+            tenant_id = EXCLUDED.tenant_id,
             name = EXCLUDED.name,
             room = EXCLUDED.room,
             serial_number = EXCLUDED.serial_number,
@@ -105,6 +123,7 @@ const upsertDeviceMetadata = async ({ device_mac, name, room, sn, serial_number,
             updated_at = NOW()
         RETURNING
             device_mac,
+            tenant_id,
             name,
             room,
             serial_number,
@@ -115,6 +134,7 @@ const upsertDeviceMetadata = async ({ device_mac, name, room, sn, serial_number,
             NULL::varchar AS device_time
     `, [
         deviceMac,
+        tenantId,
         String(name || fallbackDeviceName(deviceMac)).trim(),
         String(room || "other").trim(),
         sn || serial_number || null,
@@ -125,13 +145,22 @@ const upsertDeviceMetadata = async ({ device_mac, name, room, sn, serial_number,
     return rowToDevice(result.rows[0]);
 };
 
-const updateDeviceMetadata = async (deviceMac, changes) => {
+const updateDeviceMetadata = async (deviceMac, changes, tenantId = null) => {
     const currentMac = normalizeDeviceMac(deviceMac);
     if (!currentMac) {
         throw new Error("device_mac is required");
     }
+    if (!tenantId) {
+        throw new Error("tenant_id is required");
+    }
 
-    const current = await pool.query("SELECT * FROM devices WHERE device_mac = $1", [currentMac]);
+    const current = await pool.query(
+        "SELECT * FROM devices WHERE device_mac = $1 AND tenant_id = $2",
+        [currentMac, tenantId]
+    );
+    if (current.rowCount === 0) {
+        throw new Error("device not found");
+    }
     const existing = current.rows[0] || {
         device_mac: currentMac,
         name: fallbackDeviceName(currentMac),
@@ -148,18 +177,21 @@ const updateDeviceMetadata = async (deviceMac, changes) => {
         sn: changes.sn ?? changes.serial_number ?? existing.serial_number,
         spark: changes.spark ?? existing.spark,
         metadata: changes.metadata ?? existing.metadata
-    });
+    }, tenantId);
 };
 
-const deleteDeviceMetadata = async (deviceMac) => {
+const deleteDeviceMetadata = async (deviceMac, tenantId = null) => {
     const currentMac = normalizeDeviceMac(deviceMac);
     if (!currentMac) {
         throw new Error("device_mac is required");
     }
+    if (!tenantId) {
+        throw new Error("tenant_id is required");
+    }
 
     const result = await pool.query(
-        "DELETE FROM devices WHERE device_mac = $1 RETURNING device_mac",
-        [currentMac]
+        "DELETE FROM devices WHERE device_mac = $1 AND tenant_id = $2 RETURNING device_mac",
+        [currentMac, tenantId]
     );
 
     return result.rowCount > 0;
@@ -291,8 +323,9 @@ const metricConfig = {
         ]}
 };
 
-const liveAggregateData = async (device_mac,metric,range) => {
+const liveAggregateData = async (device_mac,metric,range, tenantId = null) => {
     const deviceMac = device_mac;
+    if (!tenantId) return null;
     
     try {
         if (!AllowedMetrics[metric]) {
@@ -306,18 +339,23 @@ const liveAggregateData = async (device_mac,metric,range) => {
         const configColumn = column.column;
         const result = await pool.query(`
             WITH latest AS (
-                SELECT ${configColumn} AS latest_value,received_at
-                FROM mqtt_payload
-                WHERE device_mac = $1
-                ORDER BY received_at DESC
+                SELECT mp.${configColumn} AS latest_value, mp.received_at
+                FROM mqtt_payload mp
+                INNER JOIN devices d ON UPPER(TRIM(d.device_mac)) = UPPER(TRIM(mp.device_mac))
+                WHERE UPPER(TRIM(mp.device_mac)) = UPPER(TRIM($1))
+                  AND d.tenant_id = $3
+                ORDER BY mp.received_at DESC
                 LIMIT 1
                 ),
             stats AS (
                 SELECT 
-                AVG (${configColumn}) AS avg_value,
-                MAX (${configColumn}) AS peak_value
-                FROM mqtt_payload
-                WHERE device_mac = $1 AND received_at  >= NOW() - $2 ::interval     
+                AVG (mp.${configColumn}) AS avg_value,
+                MAX (mp.${configColumn}) AS peak_value
+                FROM mqtt_payload mp
+                INNER JOIN devices d ON UPPER(TRIM(d.device_mac)) = UPPER(TRIM(mp.device_mac))
+                WHERE UPPER(TRIM(mp.device_mac)) = UPPER(TRIM($1))
+                  AND d.tenant_id = $3
+                  AND mp.received_at  >= NOW() - $2 ::interval     
 
             )
             SELECT 
@@ -328,7 +366,7 @@ const liveAggregateData = async (device_mac,metric,range) => {
             
             FROM latest, stats;
         `, 
-        [deviceMac, range === "24h" ? "24 hours" : "24 hours" ]);
+        [deviceMac, range === "24h" ? "24 hours" : "24 hours", tenantId ]);
         const row = result.rows[0];
         if(!row){
             console.error("No data found for the specified device and metric");

@@ -4,10 +4,14 @@ const {
     retrivelLatestData,
     graphDataRetrieval,
 } = require("../controller/dashboard_data");
+const { requireAuth } = require("../middleware/auth");
+
+router.use(requireAuth);
 
 router.get("/", async (req, res) => {
     try {
-        const result = await retrivelLatestData();
+        const result = await retrivelLatestData(null, req.user.tenantId);
+        if (!result) return res.status(404).json({ error: "No tenant device data found" });
         return res.json(result);
     } catch (err) {
         console.error("Error retrieving latest data:", err);
@@ -33,6 +37,7 @@ router.get("/graph", async (req, res) => {
             deviceMac,
             metric,
             range,
+            tenantId: req.user.tenantId
         });
 
         return res.json(graphData);

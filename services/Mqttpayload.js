@@ -105,10 +105,14 @@ client.on('message', async (topic, message) => {
         const deviceMac = savedPayload.device_mac;
 
         // Emit to device-specific room
-        emitDeviceUpdate(deviceMac, dashboardLatest);
+        emitDeviceUpdate(deviceMac, dashboardLatest).catch((err) => {
+            console.error("Error emitting device update:", err);
+        });
         
         // Emit to dashboard (for primary device)
-        emitDashboardUpdate(dashboardLatest);
+        emitDashboardUpdate(dashboardLatest).catch((err) => {
+            console.error("Error emitting dashboard update:", err);
+        });
 
         await evaluateAlertRulesForReading(savedPayload);
 

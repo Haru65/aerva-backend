@@ -1,6 +1,29 @@
 const { Server } = require("socket.io");
+const pool = require("../controller/db_connection");
+const { verifyToken } = require("../middleware/auth");
 
 let io;
+
+function normalizeDeviceMac(deviceMac) {
+    return String(deviceMac || "").trim().toUpperCase();
+}
+
+async function getDeviceTenantId(deviceMac) {
+    const result = await pool.query(
+        "SELECT tenant_id FROM devices WHERE UPPER(TRIM(device_mac)) = $1 LIMIT 1",
+        [normalizeDeviceMac(deviceMac)]
+    );
+    return result.rows[0]?.tenant_id || null;
+}
+
+async function tenantOwnsDevice(tenantId, deviceMac) {
+    if (!tenantId || !deviceMac) return false;
+    const result = await pool.query(
+        "SELECT 1 FROM devices WHERE tenant_id = $1 AND UPPER(TRIM(device_mac)) = $2 LIMIT 1",
+        [tenantId, normalizeDeviceMac(deviceMac)]
+    );
+    return result.rowCount > 0;
+}
 
 const ioConnection = (server) => {
     io = new Server(server, {
@@ -12,26 +35,47 @@ const ioConnection = (server) => {
         transports: ['websocket', 'polling']
     });
 
+    io.use((socket, next) => {
+        const header = socket.handshake.headers.authorization || "";
+        const token = socket.handshake.auth?.token ||
+            (header.startsWith("Bearer ") ? header.slice(7) : "");
+        const payload = verifyToken(token);
+
+        if (!payload?.tenantId) {
+            return next(new Error("Authentication required"));
+        }
+
+        socket.user = {
+            id: payload.sub,
+            tenantId: payload.tenantId,
+            email: payload.email
+        };
+        next();
+    });
+
     io.on("connection", (socket) => {
         console.log("Client connected:", socket.id);
+        socket.join(`tenant:${socket.user.tenantId}`);
 
         // Subscribe to device updates
         // Client sends: { deviceMac: "EC64C96EDA3C" }
-        socket.on("subscribe:device", (data) => {
-            const deviceMac = data?.deviceMac;
-            if (deviceMac) {
-                const room = `device:${deviceMac}`;
+        socket.on("subscribe:device", async (data) => {
+            const deviceMac = normalizeDeviceMac(data?.deviceMac);
+            if (deviceMac && await tenantOwnsDevice(socket.user.tenantId, deviceMac)) {
+                const room = `tenant:${socket.user.tenantId}:device:${deviceMac}`;
                 socket.join(room);
                 console.log(`Client ${socket.id} subscribed to ${room}`);
                 socket.emit("subscribed", { deviceMac, status: "connected" });
+            } else {
+                socket.emit("subscription:error", { deviceMac, error: "Device not found" });
             }
         });
 
         // Unsubscribe from device updates
         socket.on("unsubscribe:device", (data) => {
-            const deviceMac = data?.deviceMac;
+            const deviceMac = normalizeDeviceMac(data?.deviceMac);
             if (deviceMac) {
-                const room = `device:${deviceMac}`;
+                const room = `tenant:${socket.user.tenantId}:device:${deviceMac}`;
                 socket.leave(room);
                 console.log(`Client ${socket.id} unsubscribed from ${room}`);
             }
@@ -39,14 +83,16 @@ const ioConnection = (server) => {
 
         // Subscribe to all devices
         socket.on("subscribe:all-devices", () => {
-            socket.join("all-devices");
-            console.log(`Client ${socket.id} subscribed to all-devices`);
+            const room = `tenant:${socket.user.tenantId}:all-devices`;
+            socket.join(room);
+            console.log(`Client ${socket.id} subscribed to ${room}`);
             socket.emit("subscribed", { status: "connected", scope: "all-devices" });
         });
 
         socket.on("subscribe:alerts", () => {
-            socket.join("alerts");
-            console.log(`Client ${socket.id} subscribed to alerts`);
+            const room = `tenant:${socket.user.tenantId}:alerts`;
+            socket.join(room);
+            console.log(`Client ${socket.id} subscribed to ${room}`);
             socket.emit("subscribed", { status: "connected", scope: "alerts" });
         });
 
@@ -71,23 +117,30 @@ const getIO = () => {
 };
 
 // Emit device-specific updates
-const emitDeviceUpdate = (deviceMac, data) => {
+const emitDeviceUpdate = async (deviceMac, data) => {
     if (!io) return;
-    const room = `device:${deviceMac}`;
+    const normalizedMac = normalizeDeviceMac(deviceMac);
+    const tenantId = await getDeviceTenantId(normalizedMac);
+    if (!tenantId) return;
+
+    const room = `tenant:${tenantId}:device:${normalizedMac}`;
     io.to(room).emit(`/devices/${deviceMac}`, data);
-    // Also emit to all-devices room
-    io.to("all-devices").emit("/devices/all", { deviceMac, data });
+    io.to(`tenant:${tenantId}:all-devices`).emit("/devices/all", { deviceMac: normalizedMac, data });
 };
 
 // Emit dashboard update (primary device)
-const emitDashboardUpdate = (data) => {
+const emitDashboardUpdate = async (data) => {
     if (!io) return;
-    io.emit("/api/dashboard/", data);
+    const tenantId = await getDeviceTenantId(data?.device_mac);
+    if (!tenantId) return;
+    io.to(`tenant:${tenantId}`).emit("/api/dashboard/", data);
 };
 
 const emitAlertEvent = (data) => {
     if (!io) return;
-    io.to("alerts").emit("/api/alerts/events", data);
+    const tenantId = data?.tenantId || data?.event?.tenantId;
+    if (!tenantId) return;
+    io.to(`tenant:${tenantId}:alerts`).emit("/api/alerts/events", data);
 };
 
 module.exports = { ioConnection, getIO, emitDeviceUpdate, emitDashboardUpdate, emitAlertEvent };

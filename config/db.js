@@ -7,6 +7,36 @@ const pool = require("../controller/db_connection");
 //database schema function 
 
 async function createSchema() {
+    const createUserTableQuery = `
+    CREATE TABLE IF NOT EXISTS users (
+        id SERIAL PRIMARY KEY,
+        username VARCHAR(80) UNIQUE NOT NULL,
+        name VARCHAR(120),
+        email VARCHAR(255) UNIQUE NOT NULL,
+        password_hash VARCHAR(255) NOT NULL,
+        tenant_id VARCHAR(120) UNIQUE NOT NULL,
+        workspace VARCHAR(120),
+        role VARCHAR(40) DEFAULT 'owner',
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW()
+    )`;
+    await pool.query(createUserTableQuery);
+
+    await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS name VARCHAR(120)`);
+    await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS tenant_id VARCHAR(120)`);
+    await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS workspace VARCHAR(120)`);
+    await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS role VARCHAR(40) DEFAULT 'owner'`);
+    await pool.query(`
+        UPDATE users
+        SET
+            tenant_id = COALESCE(tenant_id, 'tenant_legacy_' || id),
+            name = COALESCE(name, username),
+            workspace = COALESCE(workspace, COALESCE(name, username) || '''s Home'),
+            role = COALESCE(role, 'owner')
+        WHERE tenant_id IS NULL OR workspace IS NULL OR role IS NULL
+    `);
+    await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_users_tenant_id ON users (tenant_id)`);
+
     const payloadTableQuery = `
     CREATE TABLE IF NOT EXISTS mqtt_payload (
         id SERIAL PRIMARY KEY,
@@ -40,6 +70,7 @@ async function createSchema() {
     const devicesTableQuery = `
     CREATE TABLE IF NOT EXISTS devices (
         device_mac VARCHAR(60) PRIMARY KEY,
+        tenant_id VARCHAR(120),
         name VARCHAR(120) NOT NULL,
         room VARCHAR(40) DEFAULT 'other',
         serial_number VARCHAR(60),
@@ -50,9 +81,13 @@ async function createSchema() {
     )`;
     await pool.query(devicesTableQuery);
 
+    await pool.query(`ALTER TABLE devices ADD COLUMN IF NOT EXISTS tenant_id VARCHAR(120)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_devices_tenant_id ON devices (tenant_id)`);
+
     const alertRulesTableQuery = `
     CREATE TABLE IF NOT EXISTS alert_rules (
         id VARCHAR(80) PRIMARY KEY,
+        tenant_id VARCHAR(120),
         sensor VARCHAR(40) NOT NULL,
         condition VARCHAR(20) NOT NULL,
         threshold_value NUMERIC NOT NULL,
@@ -72,11 +107,14 @@ async function createSchema() {
         ALTER TABLE alert_rules
         ADD COLUMN IF NOT EXISTS device_mac VARCHAR(60)
     `);
+    await pool.query(`ALTER TABLE alert_rules ADD COLUMN IF NOT EXISTS tenant_id VARCHAR(120)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_alert_rules_tenant_id ON alert_rules (tenant_id)`);
 
     const alertEventsTableQuery = `
     CREATE TABLE IF NOT EXISTS alert_events (
         id SERIAL PRIMARY KEY,
         rule_id VARCHAR(80) REFERENCES alert_rules(id) ON DELETE SET NULL,
+        tenant_id VARCHAR(120),
         device_mac VARCHAR(60),
         device_name VARCHAR(120),
         room VARCHAR(40),
@@ -100,6 +138,8 @@ async function createSchema() {
         metadata JSONB DEFAULT '{}'::jsonb
     )`;
     await pool.query(alertEventsTableQuery);
+    await pool.query(`ALTER TABLE alert_events ADD COLUMN IF NOT EXISTS tenant_id VARCHAR(120)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_alert_events_tenant_id ON alert_events (tenant_id)`);
 
     await pool.query(`
         CREATE INDEX IF NOT EXISTS idx_alert_events_feed
@@ -114,6 +154,7 @@ async function createSchema() {
     const alertRuleStateTableQuery = `
     CREATE TABLE IF NOT EXISTS alert_rule_state (
         rule_id VARCHAR(80) NOT NULL REFERENCES alert_rules(id) ON DELETE CASCADE,
+        tenant_id VARCHAR(120),
         device_mac VARCHAR(60) NOT NULL,
         condition_started_at TIMESTAMP NOT NULL,
         last_seen_at TIMESTAMP NOT NULL,
@@ -121,6 +162,7 @@ async function createSchema() {
         PRIMARY KEY (rule_id, device_mac)
     )`;
     await pool.query(alertRuleStateTableQuery);
+    await pool.query(`ALTER TABLE alert_rule_state ADD COLUMN IF NOT EXISTS tenant_id VARCHAR(120)`);
 
     await pool.query(`
         INSERT INTO alert_rules (
