@@ -10,6 +10,7 @@ const {
     deleteDeviceMetadata
 } = require("../controller/devices.js")
 const mqttSubscriptionEvents = require("../services/mqttSubscriptionEvents");
+const { emitTenantConfigChanged } = require("../services/socket_service");
 
 router.use(requireAuth);
 
@@ -27,6 +28,7 @@ router.post("/", async (req, res) => {
     try {
         const device = await upsertDeviceMetadata(req.body || {}, req.user.tenantId);
         mqttSubscriptionEvents.emit("devices:changed");
+        emitTenantConfigChanged(req.user.tenantId, "devices", "created");
         res.status(201).json(device);
     } catch (err) {
         console.error("Error saving device metadata:", err);
@@ -46,6 +48,7 @@ router.patch("/:deviceMac", async (req, res) => {
         const { deviceMac } = req.params;
         const device = await updateDeviceMetadata(deviceMac, req.body || {}, req.user.tenantId);
         mqttSubscriptionEvents.emit("devices:changed");
+        emitTenantConfigChanged(req.user.tenantId, "devices", "updated");
         res.json(device);
     } catch (err) {
         console.error("Error updating device metadata:", err);
@@ -66,6 +69,7 @@ router.delete("/:deviceMac", async (req, res) => {
             return res.status(404).json({ error: "Device not found" });
         }
         mqttSubscriptionEvents.emit("devices:changed");
+        emitTenantConfigChanged(req.user.tenantId, "devices", "deleted");
         res.status(204).send();
     } catch (err) {
         console.error("Error deleting device metadata:", err);

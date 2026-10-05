@@ -10,6 +10,7 @@ const {
     getAlertSummary
 } = require("../services/alert_service");
 const { requireAuth } = require("../middleware/auth");
+const { emitTenantConfigChanged } = require("../services/socket_service");
 
 router.use(requireAuth);
 
@@ -46,6 +47,7 @@ router.get("/summary", async (req, res) => {
 router.post("/", async (req, res) => {
     try {
         const alert = await createAlertRule(req.body || {}, req.user.tenantId);
+        emitTenantConfigChanged(req.user.tenantId, "alerts", "created");
         res.status(201).json(alert);
     } catch (err) {
         console.error("Error creating alert rule:", err);
@@ -59,6 +61,7 @@ router.put("/:id", async (req, res) => {
         if (!alert) {
             return res.status(404).json({ error: "Alert rule not found" });
         }
+        emitTenantConfigChanged(req.user.tenantId, "alerts", "updated");
         res.json(alert);
     } catch (err) {
         console.error("Error updating alert rule:", err);
@@ -72,6 +75,7 @@ router.delete("/:id", async (req, res) => {
         if (!deleted) {
             return res.status(404).json({ error: "Alert rule not found" });
         }
+        emitTenantConfigChanged(req.user.tenantId, "alerts", "deleted");
         res.status(204).send();
     } catch (err) {
         console.error("Error deleting alert rule:", err);

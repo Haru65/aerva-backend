@@ -40,6 +40,15 @@ async function createSchema() {
     await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_users_tenant_id ON users (tenant_id)`);
     await ensureSuperAdminUser();
 
+    const tenantSettingsTableQuery = `
+    CREATE TABLE IF NOT EXISTS tenant_settings (
+        tenant_id VARCHAR(120) PRIMARY KEY,
+        preferences JSONB NOT NULL DEFAULT '{}'::jsonb,
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW()
+    )`;
+    await pool.query(tenantSettingsTableQuery);
+
     const payloadTableQuery = `
     CREATE TABLE IF NOT EXISTS mqtt_payload (
         id SERIAL PRIMARY KEY,
@@ -233,8 +242,80 @@ async function createSchema() {
         ON CONFLICT (device_mac) DO NOTHING
     `);
 
+    const createOTPTableQuery = `
+    CREATE TABLE IF NOT EXISTS otp_codes (
+        id BIGSERIAL PRIMARY KEY,
+        otp_request_id UUID UNIQUE NOT NULL,
+        subject_id VARCHAR(120) NOT NULL,
+        email VARCHAR(255) NOT NULL,
+        purpose VARCHAR(40) NOT NULL,
+        otp_hash CHAR(64) NOT NULL,
+        expires_at TIMESTAMPTZ NOT NULL,
+        attempts SMALLINT NOT NULL DEFAULT 0 CHECK (attempts >= 0),
+        max_attempts SMALLINT NOT NULL DEFAULT 5 CHECK (max_attempts > 0),
+        consumed_at TIMESTAMPTZ,
+        verified_at TIMESTAMPTZ,
+        verification_token_hash CHAR(64),
+        verification_token_expires_at TIMESTAMPTZ,
+        verification_consumed_at TIMESTAMPTZ,
+        delivery_status VARCHAR(20) NOT NULL DEFAULT 'pending',
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )`;
+    await pool.query(createOTPTableQuery);
+    await pool.query(`
+        ALTER TABLE otp_codes
+        ADD COLUMN IF NOT EXISTS otp_request_id UUID,
+        ADD COLUMN IF NOT EXISTS subject_id VARCHAR(120),
+        ADD COLUMN IF NOT EXISTS email VARCHAR(255),
+        ADD COLUMN IF NOT EXISTS purpose VARCHAR(40),
+        ADD COLUMN IF NOT EXISTS otp_hash CHAR(64),
+        ADD COLUMN IF NOT EXISTS attempts SMALLINT NOT NULL DEFAULT 0,
+        ADD COLUMN IF NOT EXISTS max_attempts SMALLINT NOT NULL DEFAULT 5,
+        ADD COLUMN IF NOT EXISTS consumed_at TIMESTAMPTZ,
+        ADD COLUMN IF NOT EXISTS verified_at TIMESTAMPTZ,
+        ADD COLUMN IF NOT EXISTS verification_token_hash CHAR(64),
+        ADD COLUMN IF NOT EXISTS verification_token_expires_at TIMESTAMPTZ,
+        ADD COLUMN IF NOT EXISTS verification_consumed_at TIMESTAMPTZ,
+        ADD COLUMN IF NOT EXISTS delivery_status VARCHAR(20) NOT NULL DEFAULT 'pending',
+        ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    `);
+    await pool.query(`
+        DELETE FROM otp_codes
+        WHERE otp_request_id IS NULL
+           OR subject_id IS NULL
+           OR email IS NULL
+           OR purpose IS NULL
+           OR otp_hash IS NULL
+    `);
+    await pool.query(`
+        ALTER TABLE otp_codes
+        DROP COLUMN IF EXISTS uuid,
+        DROP COLUMN IF EXISTS otp,
+        ALTER COLUMN otp_request_id SET NOT NULL,
+        ALTER COLUMN subject_id SET NOT NULL,
+        ALTER COLUMN email SET NOT NULL,
+        ALTER COLUMN purpose SET NOT NULL,
+        ALTER COLUMN otp_hash SET NOT NULL
+    `);
+    await pool.query(`
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_otp_codes_request_id
+        ON otp_codes (otp_request_id)
+    `);
+    await pool.query(`
+        CREATE INDEX IF NOT EXISTS idx_otp_codes_email_created
+        ON otp_codes (LOWER(email), created_at DESC)
+    `);
+    await pool.query(`
+        CREATE INDEX IF NOT EXISTS idx_otp_codes_subject_purpose_created
+        ON otp_codes (subject_id, purpose, created_at DESC)
+    `);
+    await pool.query(`
+        CREATE INDEX IF NOT EXISTS idx_otp_codes_cleanup
+        ON otp_codes (created_at)
+    `);
+    await pool.query("DROP TABLE IF EXISTS otp");
+
     console.log("Tables created successfully");
-    
 }
 
 async function ensureSuperAdminUser() {
@@ -275,6 +356,11 @@ async function ensureSuperAdminUser() {
         passwordHash,
         tenantId
     ]);
+
+
+
 }
+
+
 
 module.exports = createSchema;

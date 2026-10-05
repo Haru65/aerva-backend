@@ -58,20 +58,24 @@ const rangeToInterval = {
     "1h": "1 hour",
     "24h": "24 hours",
     "7d": "7 days",
-    "30d": "30 days"
+    "30d": "30 days",
+    "60d": "60 days",
+    "90d": "90 days",
+    "180d": "180 days",
+    "1y": "1 year"
 };
 
-const reportData = async (deviceMac, range, tenantId = null) => {
+const reportData = async (deviceMac, period, tenantId = null) => {
     if (!tenantId) return [];
 
     try{
-        const interval = rangeToInterval[range];
-        if (!interval) {
-            throw new Error(`Invalid range: ${range}`);
-        }
+        const selection = typeof period === "string" ? { range: period } : (period || {});
+        const interval = rangeToInterval[selection.range];
+        const hasCustomDates = isISODate(selection.from) && isISODate(selection.to);
+        if (!interval && !hasCustomDates) throw new Error("A valid report range or date interval is required");
+        if (hasCustomDates && selection.from > selection.to) throw new Error("Report start date must not be after end date");
 
-        const result = await pool.query(
-            `WITH report_rows AS (
+        const reportRowsQuery = `WITH report_rows AS (
                 SELECT
                     *,
                     CASE
@@ -84,11 +88,22 @@ const reportData = async (deviceMac, range, tenantId = null) => {
                 WHERE UPPER(TRIM(mp.device_mac)) = UPPER(TRIM($1))
                   AND d.tenant_id = $3
             )
-            SELECT * FROM report_rows
-            WHERE report_device_time >= (NOW() - $2::interval)::timestamp
-            ORDER BY report_device_time DESC`,
-            [deviceMac, interval, tenantId]
-        );
+            SELECT * FROM report_rows`;
+
+        const result = hasCustomDates
+            ? await pool.query(
+                `${reportRowsQuery}
+                WHERE report_device_time >= $2::date
+                  AND report_device_time < ($4::date + INTERVAL '1 day')
+                ORDER BY report_device_time DESC`,
+                [deviceMac, selection.from, tenantId, selection.to]
+            )
+            : await pool.query(
+                `${reportRowsQuery}
+                WHERE report_device_time >= (NOW() - $2::interval)::timestamp
+                ORDER BY report_device_time DESC`,
+                [deviceMac, interval, tenantId]
+            );
          
         return (result.rows.map(row => ({
            
@@ -118,4 +133,10 @@ const reportData = async (deviceMac, range, tenantId = null) => {
     }   
 }
 
-module.exports = { reportData };
+function isISODate(value) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(value || ""))) return false;
+    const date = new Date(`${value}T00:00:00.000Z`);
+    return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
+}
+
+module.exports = { reportData, _test: { isISODate } };

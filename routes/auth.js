@@ -3,29 +3,49 @@ const bcrypt = require("bcrypt");
 const crypto = require("crypto");
 const pool = require("../controller/db_connection");
 const { createToken } = require("../middleware/auth");
+const { OtpError, consumeVerificationToken } = require("../services/otpGeneration");
 
 const router = express.Router();
 const PASSWORD_ROUNDS = 10;
 
 router.post("/signup", async (req, res) => {
+    let client;
+    let transactionFinished = false;
     try {
-        const { name, email, password } = req.body || {};
+        const { name, email, password, verificationToken, uuid } = req.body || {};
         const cleanEmail = normalizeEmail(email);
         const cleanName = String(name || "").trim() || cleanEmail.split("@")[0];
 
-        if (!cleanEmail || !password) {
-            return res.status(400).json({ message: "Email and password are required" });
-        }
-
-        const existing = await pool.query("SELECT id FROM users WHERE LOWER(email) = LOWER($1)", [cleanEmail]);
-        if (existing.rowCount > 0) {
-            return res.status(409).json({ message: "Account already exists. Please login." });
+        if (!cleanEmail || !password || !verificationToken || !uuid) {
+            return res.status(400).json({ message: "Email, password, and email verification are required" });
         }
 
         const passwordHash = await bcrypt.hash(String(password), PASSWORD_ROUNDS);
+        client = await pool.connect();
+        await client.query("BEGIN");
+
+        const verification = await consumeVerificationToken({
+            token: verificationToken,
+            subjectId: uuid,
+            purpose: "email_verification",
+            db: client
+        });
+        if (!verification || normalizeEmail(verification.email) !== cleanEmail) {
+            await client.query("ROLLBACK");
+            transactionFinished = true;
+            return res.status(401).json({ message: "Invalid or expired email verification" });
+        }
+
+        const existing = await client.query("SELECT id FROM users WHERE LOWER(email) = LOWER($1)", [cleanEmail]);
+        if (existing.rowCount > 0) {
+            await client.query("ROLLBACK");
+            transactionFinished = true;
+            return res.status(409).json({ message: "Account already exists. Please login." });
+        }
+
         const tenantId = `tenant_${crypto.randomUUID()}`;
         const username = cleanEmail;
-        const result = await pool.query(`
+        const result = await client.query(`
             INSERT INTO users (
                 username,
                 name,
@@ -47,13 +67,30 @@ router.post("/signup", async (req, res) => {
         ]);
 
         const user = result.rows[0];
+        await client.query("COMMIT");
+        transactionFinished = true;
         res.status(201).json({
             token: createToken(user),
             user: toClientUser(user)
         });
     } catch (err) {
+        if (client && !transactionFinished) {
+            try {
+                await client.query("ROLLBACK");
+            } catch {
+                // Preserve the original signup error.
+            }
+        }
+        if (err instanceof OtpError) {
+            return res.status(401).json({ message: "Invalid or expired email verification" });
+        }
+        if (err?.code === "23505") {
+            return res.status(409).json({ message: "Account already exists. Please login." });
+        }
         console.error("Signup failed:", err);
-        res.status(500).json({ message: "Could not create account" });
+        return res.status(500).json({ message: "Could not create account" });
+    } finally {
+        client?.release();
     }
 });
 

@@ -143,4 +143,13 @@ const emitAlertEvent = (data) => {
     io.to(`tenant:${tenantId}:alerts`).emit("/api/alerts/events", data);
 };
 
-module.exports = { ioConnection, getIO, emitDeviceUpdate, emitDashboardUpdate, emitAlertEvent };
+const emitTenantConfigChanged = (tenantId, resource, action) => {
+    if (!io || !tenantId) return;
+    io.to(`tenant:${tenantId}`).emit("/api/config/changed", {
+        resource,
+        action,
+        changedAt: new Date().toISOString()
+    });
+};
+
+module.exports = { ioConnection, getIO, emitDeviceUpdate, emitDashboardUpdate, emitAlertEvent, emitTenantConfigChanged };

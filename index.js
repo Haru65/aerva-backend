@@ -4,7 +4,7 @@ const {ioConnection} = require("./services/socket_service");
 const app = express();
 const dotenv = require("dotenv");
 const { Server } = require("socket.io");
-
+const otpManagement = require("./routes/otpRoute");
 
 
 const cors = require("cors");
@@ -15,6 +15,7 @@ const exportExcel = require("./routes/reports")
 const alerts = require("./routes/alerts")
 const auth = require("./routes/auth")
 const adminDevices = require("./routes/adminDevices")
+const settings = require("./routes/settings")
 
 
 // Middleware to parse JSON requests
@@ -40,10 +41,11 @@ app.get("/",(req,res)=>{
 app.use("/api/auth", auth);
 app.use("/api/admin/devices", adminDevices);
 app.use("/api/dashboard", dashboa);
-
+app.use("/api/otp", otpManagement);
 app.use("/devices", mydevice);
 app.use("/api/reports", exportExcel);
 app.use("/api/alerts", alerts);
+app.use("/api/settings", settings);
 
 
 createSchema()

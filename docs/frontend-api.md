@@ -195,7 +195,7 @@ Expected response:
 Excel report:
 
 ```http
-GET /api/reports/export?device_mac=EC64C96EDA3C&range=7d
+GET /api/reports/excel?device_mac=EC64C96EDA3C&range=7d
 ```
 
 Browser download:
@@ -207,14 +207,21 @@ export function downloadExcelReport(deviceMac, range) {
     range
   });
 
-  window.location.href = `${API_BASE}/api/reports/export?${params}`;
+  window.location.href = `${API_BASE}/api/reports/excel?${params}`;
 }
 ```
 
 PDF report, if enabled:
 
 ```http
-GET /api/reports/export-pdf?device_mac=EC64C96EDA3C&range=7d
+GET /api/reports/pdf?device_mac=EC64C96EDA3C&range=7d
+```
+
+Custom date intervals use inclusive `from` and `to` dates for both PDF and Excel:
+
+```http
+GET /api/reports/pdf?device_mac=EC64C96EDA3C&from=2026-07-01&to=2026-09-01
+GET /api/reports/excel?device_mac=EC64C96EDA3C&from=2026-07-01&to=2026-09-01
 ```
 
 ```js
@@ -224,7 +231,7 @@ export function downloadPdfReport(deviceMac, range) {
     range
   });
 
-  window.location.href = `${API_BASE}/api/reports/export-pdf?${params}`;
+  window.location.href = `${API_BASE}/api/reports/pdf?${params}`;
 }
 ```
 
