@@ -2,7 +2,7 @@ const pool = require("../controller/db_connection");
 const { assertRegisteredActiveDevice } = require("./deviceRegistry");
 
 const DEFAULT_SPARK = [10, 9, 11, 8, 10, 9, 11, 10];
-const ONLINE_WINDOW_MS = 5 * 60 * 1000;
+const ONLINE_WINDOW_MS = 60 * 1000;
 
 function normalizeDeviceMac(deviceMac) {
     return String(deviceMac || "").trim().toUpperCase();

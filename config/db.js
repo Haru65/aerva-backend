@@ -49,6 +49,22 @@ async function createSchema() {
     )`;
     await pool.query(tenantSettingsTableQuery);
 
+    const pushSubscriptionsTableQuery = `
+    CREATE TABLE IF NOT EXISTS push_subscriptions (
+        endpoint TEXT PRIMARY KEY,
+        tenant_id VARCHAR(120) NOT NULL,
+        user_id VARCHAR(120),
+        subscription JSONB NOT NULL,
+        user_agent TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )`;
+    await pool.query(pushSubscriptionsTableQuery);
+    await pool.query(`
+        CREATE INDEX IF NOT EXISTS idx_push_subscriptions_tenant
+        ON push_subscriptions (tenant_id)
+    `);
+
     const payloadTableQuery = `
     CREATE TABLE IF NOT EXISTS mqtt_payload (
         id SERIAL PRIMARY KEY,

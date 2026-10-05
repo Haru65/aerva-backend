@@ -1,5 +1,27 @@
 # aerva-backend
 
+## Web Push notifications
+
+The alert service sends Web Push notifications to subscribed Android devices and
+installed iPhone/iPad Home Screen apps. Generate one VAPID key pair for the
+deployment:
+
+```bash
+npx web-push generate-vapid-keys
+```
+
+Set these environment variables on the backend and keep the same key pair across
+deployments:
+
+- `VAPID_PUBLIC_KEY` — the generated public key.
+- `VAPID_PRIVATE_KEY` — the generated private key; never expose it to the frontend.
+- `VAPID_SUBJECT` — a monitored contact such as `mailto:alerts@example.com`.
+
+The authenticated `/api/push` endpoints register and remove browser
+subscriptions. New alert events are dispatched from `services/alert_service.js`.
+Expired subscriptions are removed automatically after the push provider returns
+HTTP 404 or 410.
+
 ## OTP API
 
 The OTP service sends six-digit, single-use codes through Resend. Configure these

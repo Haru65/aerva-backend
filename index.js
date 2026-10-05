@@ -16,6 +16,7 @@ const alerts = require("./routes/alerts")
 const auth = require("./routes/auth")
 const adminDevices = require("./routes/adminDevices")
 const settings = require("./routes/settings")
+const push = require("./routes/push")
 
 
 // Middleware to parse JSON requests
@@ -46,6 +47,7 @@ app.use("/devices", mydevice);
 app.use("/api/reports", exportExcel);
 app.use("/api/alerts", alerts);
 app.use("/api/settings", settings);
+app.use("/api/push", push);
 
 
 createSchema()

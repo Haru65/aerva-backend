@@ -1,6 +1,7 @@
 const { Resend } = require("resend");
 const pool = require("../controller/db_connection");
 const { emitAlertEvent } = require("./socket_service");
+const { sendPushForAlert } = require("./push_service");
 
 const SENSOR_CONFIG = {
     aqi: { column: "aqi", label: "AQI", unit: "", warningAbove: 100, criticalAbove: 300 },
@@ -270,6 +271,9 @@ async function triggerAlert(rule, readingRow, device, readingValue, readingTime)
 
     let event = rowToAlertEvent(created.rows[0]);
     emitAlertEvent({ type: "triggered", tenantId: rule.tenantId, event });
+    sendPushForAlert(event, rule.tenantId).catch(err => {
+        console.error("Error dispatching alert push notification:", err);
+    });
 
     if (event.emailTo) {
         event = await sendAndRecordAlertEmail(event);
