@@ -3,6 +3,7 @@ const router = express.Router();
 const { exportExcel } = require("../services/exportExcelService");
 const { exportPDF } = require("../services/exportPDF.js");
 const { requireAuth } = require("../middleware/auth");
+const { ReportError, sendReportError } = require("../services/reportErrors");
 
 router.use(requireAuth);
 
@@ -14,20 +15,12 @@ router.get("/excel", async (req, res) => {
         const period = parseReportPeriod(req.query);
 
         const data = await exportExcel(device_mac, period, req.user.tenantId);
-        if (!data || data.length === 0) {
-            return res.status(404).json({ error: "No data found for the specified device and range" });
-        }
 
         res.download(data, `report_${device_mac}_${period.label}.xlsx`, (err) => {
-            if (err) {
-                console.error("Error sending the file:", err);
-                res.status(500).json({ error: "Internal Server Error" });
-            }
+            if (err) sendReportError(res, err, "Error sending Excel report:");
         });
     } catch (err) {
-        if (err.status === 400) return res.status(400).json({ error: err.message });
-        console.error("Error retrieving report data:", err);
-        res.status(500).json({ error: "Internal Server Error" });
+        sendReportError(res, err, "Error generating Excel report:");
     }
 });
 
@@ -39,20 +32,12 @@ router.get("/pdf", async (req, res) => {
         const period = parseReportPeriod(req.query);
 
         const data = await exportPDF(device_mac, period, req.user.tenantId);
-        if (!data || data.length === 0) {
-            return res.status(404).json({ error: "No data found for the specified device and range" });
-        }
 
         res.download(data, `report_${device_mac}_${period.label}.pdf`, (err) => {
-            if (err) {
-                console.error("Error sending the file:", err);
-                res.status(500).json({ error: "Internal Server Error" });
-            }
+            if (err) sendReportError(res, err, "Error sending PDF report:");
         });
     } catch (err) {
-        if (err.status === 400) return res.status(400).json({ error: err.message });
-        console.error("Error retrieving report data:", err);
-        res.status(500).json({ error: "Internal Server Error" });
+        sendReportError(res, err, "Error generating PDF report:");
     }
 });
 
@@ -76,7 +61,7 @@ function isISODate(value) {
 }
 
 function badRequest(message) {
-    return Object.assign(new Error(message), { status: 400 });
+    return new ReportError(message, { status: 400, code: "INVALID_REPORT_REQUEST" });
 }
 
 module.exports = router;

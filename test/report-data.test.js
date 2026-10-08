@@ -34,3 +34,10 @@ test("report dates are strictly validated", () => {
     assert.equal(_test.isISODate("2026-02-30"), false);
     assert.equal(_test.isISODate("01-09-2026"), false);
 });
+
+test("missing readings stay blank instead of becoming zero", () => {
+    assert.equal(_test.toNullableNumber(null), null);
+    assert.equal(_test.toNullableNumber(undefined), null);
+    assert.equal(_test.toNullableNumber(""), null);
+    assert.equal(_test.toNullableNumber("24.5"), 24.5);
+});

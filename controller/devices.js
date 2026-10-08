@@ -39,6 +39,7 @@ function rowToDevice(row) {
         name: row.name || fallbackDeviceName(row.device_mac),
         room: row.room || "other",
         sn: row.serial_number || "",
+        is_pinned: row.is_pinned === true,
         aqi,
         status: online ? airStatus : "off",
         airStatus,
@@ -73,6 +74,7 @@ const listDeviceMetadata = async (tenantId) => {
             d.serial_number,
             d.spark,
             d.metadata,
+            d.is_pinned,
             latest_payload.aqi,
             latest_payload.last_seen,
             latest_payload.device_time
@@ -131,6 +133,7 @@ const upsertDeviceMetadata = async ({ device_mac, name, room, sn, serial_number,
             serial_number,
             spark,
             metadata,
+            is_pinned,
             NULL::numeric AS aqi,
             NULL::timestamp AS last_seen,
             NULL::varchar AS device_time
@@ -180,6 +183,50 @@ const updateDeviceMetadata = async (deviceMac, changes, tenantId = null) => {
         spark: changes.spark ?? existing.spark,
         metadata: changes.metadata ?? existing.metadata
     }, tenantId);
+};
+
+const pinDeviceMetadata = async (deviceMac, tenantId = null) => {
+    const currentMac = normalizeDeviceMac(deviceMac);
+    if (!currentMac) {
+        throw new Error("device_mac is required");
+    }
+    if (!tenantId) {
+        throw new Error("tenant_id is required");
+    }
+
+    const client = await pool.connect();
+    try {
+        await client.query("BEGIN");
+        const tenantDevices = await client.query(`
+            SELECT device_mac
+            FROM devices
+            WHERE tenant_id = $1
+            ORDER BY device_mac
+            FOR UPDATE
+        `, [tenantId]);
+        const ownsTarget = tenantDevices.rows.some(row => normalizeDeviceMac(row.device_mac) === currentMac);
+        if (!ownsTarget) {
+            throw new Error("device not found");
+        }
+
+        await client.query(`
+            UPDATE devices
+            SET
+                is_pinned = (device_mac = $2),
+                updated_at = CASE WHEN device_mac = $2 THEN NOW() ELSE updated_at END
+            WHERE tenant_id = $1
+              AND (is_pinned = TRUE OR device_mac = $2)
+        `, [tenantId, currentMac]);
+        await client.query("COMMIT");
+    } catch (err) {
+        await client.query("ROLLBACK");
+        throw err;
+    } finally {
+        client.release();
+    }
+
+    const devices = await listDeviceMetadata(tenantId);
+    return devices.find(device => device.mac === currentMac) || null;
 };
 
 const deleteDeviceMetadata = async (deviceMac, tenantId = null) => {
@@ -415,6 +462,7 @@ module.exports = {
     listDeviceMetadata,
     upsertDeviceMetadata,
     updateDeviceMetadata,
+    pinDeviceMetadata,
     deleteDeviceMetadata,
     ensureDeviceMetadata
 };

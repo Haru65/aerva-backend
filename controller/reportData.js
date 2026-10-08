@@ -114,16 +114,16 @@ const reportData = async (deviceMac, period, tenantId = null) => {
             received_at: row.received_at,
             
             readings: {
-                temperature: Number(row.temperature),
-                humidity: Number(row.humidity),
-                co_ppm: Number(row.co_ppm),
-                o2_pct: Number(row.o2_pct),
-                co2_ppm: Number(row.co2_ppm),
-                pm1_0: Number(row.pm1_0),
-                pm2_5: Number(row.pm2_5),
-                pm10: Number(row.pm10),
-                aqi: Number(row.aqi),
-                rssi: Number(row.rssi)
+                temperature: toNullableNumber(row.temperature),
+                humidity: toNullableNumber(row.humidity),
+                co_ppm: toNullableNumber(row.co_ppm),
+                o2_pct: toNullableNumber(row.o2_pct),
+                co2_ppm: toNullableNumber(row.co2_ppm),
+                pm1_0: toNullableNumber(row.pm1_0),
+                pm2_5: toNullableNumber(row.pm2_5),
+                pm10: toNullableNumber(row.pm10),
+                aqi: toNullableNumber(row.aqi),
+                rssi: toNullableNumber(row.rssi)
             }
         })));
         console.log("Data retrieved for Excel export:", result.rows.length, "rows");
@@ -133,10 +133,16 @@ const reportData = async (deviceMac, period, tenantId = null) => {
     }   
 }
 
+function toNullableNumber(value) {
+    if (value === null || value === undefined || value === "") return null;
+    const number = Number(value);
+    return Number.isFinite(number) ? number : null;
+}
+
 function isISODate(value) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(String(value || ""))) return false;
     const date = new Date(`${value}T00:00:00.000Z`);
     return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
 }
 
-module.exports = { reportData, _test: { isISODate } };
+module.exports = { reportData, _test: { isISODate, toNullableNumber } };

@@ -7,6 +7,7 @@ const {
     listDeviceMetadata,
     upsertDeviceMetadata,
     updateDeviceMetadata,
+    pinDeviceMetadata,
     deleteDeviceMetadata
 } = require("../controller/devices.js")
 const mqttSubscriptionEvents = require("../services/mqttSubscriptionEvents");
@@ -39,6 +40,23 @@ router.post("/", async (req, res) => {
                 : err.message === "device is not registered" || err.message === "device is not active"
                     ? 403
                     : 500;
+        res.status(status).json({ error: err.message });
+    }
+});
+
+router.patch("/:deviceMac/pin", async (req, res) => {
+    try {
+        const device = await pinDeviceMetadata(req.params.deviceMac, req.user.tenantId);
+        mqttSubscriptionEvents.emit("devices:changed");
+        emitTenantConfigChanged(req.user.tenantId, "devices", "pinned");
+        res.json(device);
+    } catch (err) {
+        console.error("Error pinning device:", err);
+        const status = err.message === "device not found"
+            ? 404
+            : err.message === "device_mac is required" || err.message === "tenant_id is required"
+                ? 400
+                : 500;
         res.status(status).json({ error: err.message });
     }
 });

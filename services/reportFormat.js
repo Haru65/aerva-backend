@@ -11,6 +11,22 @@ const REPORT_METRICS = {
     aqi: { label: "aqi", unit: "" }
 };
 
+const WARNING_STYLE = {
+    level: "warning",
+    excelFill: "FFF9ED85",
+    excelText: "FF7B6F00",
+    pdfFill: "#FFFBE0",
+    pdfText: "#7B6F00"
+};
+
+const DANGER_STYLE = {
+    level: "danger",
+    excelFill: "FFFFE7E7",
+    excelText: "FFB51212",
+    pdfFill: "#FFE7E7",
+    pdfText: "#B51212"
+};
+
 function getReportColumns(data) {
     const columns = [
         { header: "ID", key: "id", width: 10 },
@@ -47,4 +63,34 @@ function toReportRow(row) {
     return result;
 }
 
-module.exports = { getReportColumns, toReportRow };
+function getReportCellStyle(metric, rawValue) {
+    if (rawValue === null || rawValue === undefined || rawValue === "") return null;
+    const value = Number(rawValue);
+    if (!Number.isFinite(value)) return null;
+
+    switch (metric) {
+        case "aqi":
+            if (value < 100) return null;
+            return value <= 300 ? WARNING_STYLE : DANGER_STYLE;
+        case "pm2_5":
+            if (value < 60) return null;
+            return value <= 250 ? WARNING_STYLE : DANGER_STYLE;
+        case "co2_ppm":
+            if (value < 800) return null;
+            return value <= 1500 ? WARNING_STYLE : DANGER_STYLE;
+        case "co_ppm":
+            if (value < 9) return null;
+            return value <= 25 ? WARNING_STYLE : DANGER_STYLE;
+        case "o2_pct":
+            if (value >= 19.5 && value <= 23) return null;
+            return value >= 18 && value < 19.5 ? WARNING_STYLE : DANGER_STYLE;
+        case "temperature":
+            return value >= 20 && value <= 26 ? null : WARNING_STYLE;
+        case "humidity":
+            return value >= 40 && value <= 60 ? null : WARNING_STYLE;
+        default:
+            return null;
+    }
+}
+
+module.exports = { getReportColumns, toReportRow, getReportCellStyle };

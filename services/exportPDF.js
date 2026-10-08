@@ -2,7 +2,8 @@ const PDFDocument = require("pdfkit");
 const fs = require("fs");
 const path = require("path");
 const { reportData } = require("../controller/reportData");
-const { getReportColumns, toReportRow } = require("./reportFormat");
+const { getReportColumns, toReportRow, getReportCellStyle } = require("./reportFormat");
+const { noReportDataError } = require("./reportErrors");
 
 const PAGE_MARGIN = 24;
 const HEADER_HEIGHT = 38;
@@ -12,7 +13,7 @@ const exportPDF = async (deviceMac, period, tenantId) => {
     try {
         const data = await reportData(deviceMac, period, tenantId);
         if (!data || data.length === 0) {
-            throw new Error("No data available for the specified device and range.");
+            throw noReportDataError();
         }
 
         const reportsDir = path.join(process.cwd(), "reports");
@@ -55,7 +56,6 @@ const exportPDF = async (deviceMac, period, tenantId) => {
         });
         return pdfPath;
     } catch (error) {
-        console.error("Error generating PDF:", error);
         throw error;
     }
 };
@@ -99,9 +99,10 @@ function drawTableRow(doc, columns, widths, row, y) {
     let x = PAGE_MARGIN;
     doc.font("Helvetica").fontSize(7);
     columns.forEach((column, index) => {
+        const style = getReportCellStyle(column.key, row[column.key]);
         drawCell(doc, formatCellValue(row[column.key]), x, y, widths[index], ROW_HEIGHT, {
-            fill: "#FFFFFF",
-            color: "#142033",
+            fill: style?.pdfFill || "#FFFFFF",
+            color: style?.pdfText || "#142033",
             align: column.key === "device_mac" || column.key === "device_time" ? "left" : "right"
         });
         x += widths[index];

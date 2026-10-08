@@ -104,13 +104,34 @@ async function createSchema() {
         serial_number VARCHAR(60),
         spark JSONB DEFAULT '[]'::jsonb,
         metadata JSONB DEFAULT '{}'::jsonb,
+        is_pinned BOOLEAN NOT NULL DEFAULT FALSE,
         created_at TIMESTAMP DEFAULT NOW(),
         updated_at TIMESTAMP DEFAULT NOW()
     )`;
     await pool.query(devicesTableQuery);
 
     await pool.query(`ALTER TABLE devices ADD COLUMN IF NOT EXISTS tenant_id VARCHAR(120)`);
+    await pool.query(`ALTER TABLE devices ADD COLUMN IF NOT EXISTS is_pinned BOOLEAN NOT NULL DEFAULT FALSE`);
+    await pool.query(`
+        WITH ranked_pins AS (
+            SELECT
+                device_mac,
+                ROW_NUMBER() OVER (PARTITION BY tenant_id ORDER BY device_mac) AS pin_rank
+            FROM devices
+            WHERE is_pinned = TRUE
+        )
+        UPDATE devices AS device
+        SET is_pinned = FALSE
+        FROM ranked_pins
+        WHERE device.device_mac = ranked_pins.device_mac
+          AND ranked_pins.pin_rank > 1
+    `);
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_devices_tenant_id ON devices (tenant_id)`);
+    await pool.query(`
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_devices_one_pinned_per_tenant
+        ON devices (tenant_id)
+        WHERE is_pinned = TRUE
+    `);
 
     const deviceRegistryTableQuery = `
     CREATE TABLE IF NOT EXISTS device_registry (
