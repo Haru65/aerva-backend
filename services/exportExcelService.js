@@ -22,11 +22,22 @@ const exportExcel = async (deviceMac, period, tenantId) => {
         data.forEach(row => {
             const reportRow = toReportRow(row);
             const worksheetRow = worksheet.addRow(reportRow);
+            worksheetRow.height = 18;
             columns.forEach(column => {
+                const cell = worksheetRow.getCell(column.key);
+                cell.alignment = {
+                    ...cell.alignment,
+                    horizontal: "center",
+                    vertical: "middle"
+                };
+                cell.font = {
+                    ...cell.font,
+                    size: 12
+                };
+
                 const style = getReportCellStyle(column.key, reportRow[column.key]);
                 if (!style) return;
 
-                const cell = worksheetRow.getCell(column.key);
                 cell.fill = {
                     type: "pattern",
                     pattern: "solid",

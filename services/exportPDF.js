@@ -97,13 +97,13 @@ function drawTableHeader(doc, columns, widths, y) {
 
 function drawTableRow(doc, columns, widths, row, y) {
     let x = PAGE_MARGIN;
-    doc.font("Helvetica").fontSize(7);
+    doc.font("Helvetica").fontSize(9);
     columns.forEach((column, index) => {
         const style = getReportCellStyle(column.key, row[column.key]);
         drawCell(doc, formatCellValue(row[column.key]), x, y, widths[index], ROW_HEIGHT, {
             fill: style?.pdfFill || "#FFFFFF",
             color: style?.pdfText || "#142033",
-            align: column.key === "device_mac" || column.key === "device_time" ? "left" : "right"
+            align: "center"
         });
         x += widths[index];
     });
