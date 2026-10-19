@@ -54,7 +54,12 @@ test("pinDeviceMetadata switches the tenant pin in one transaction", async () =>
     assert.equal(pinned.is_pinned, true);
     assert.equal(released, true);
     assert.match(transactionQueries[0].sql, /BEGIN/);
-    assert.match(transactionQueries[2].sql, /is_pinned = \(device_mac = \$2\)/);
+    assert.match(transactionQueries[2].sql, /SET is_pinned = FALSE/);
+    assert.match(transactionQueries[2].sql, /is_pinned = TRUE/);
+    assert.match(transactionQueries[2].sql, /device_mac <> \$2/);
     assert.deepEqual(transactionQueries[2].params, ["tenant-1", "NEWDEVICE"]);
-    assert.match(transactionQueries[3].sql, /COMMIT/);
+    assert.match(transactionQueries[3].sql, /is_pinned = TRUE/);
+    assert.match(transactionQueries[3].sql, /device_mac = \$2/);
+    assert.deepEqual(transactionQueries[3].params, ["tenant-1", "NEWDEVICE"]);
+    assert.match(transactionQueries[4].sql, /COMMIT/);
 });

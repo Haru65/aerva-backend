@@ -209,13 +209,23 @@ const pinDeviceMetadata = async (deviceMac, tenantId = null) => {
             throw new Error("device not found");
         }
 
+        // Clear the existing pin before setting the new one. Doing both in a
+        // single UPDATE can trip the partial unique index when PostgreSQL
+        // happens to update the target row before the currently pinned row.
+        await client.query(`
+            UPDATE devices
+            SET is_pinned = FALSE
+            WHERE tenant_id = $1
+              AND is_pinned = TRUE
+              AND device_mac <> $2
+        `, [tenantId, currentMac]);
         await client.query(`
             UPDATE devices
             SET
-                is_pinned = (device_mac = $2),
-                updated_at = CASE WHEN device_mac = $2 THEN NOW() ELSE updated_at END
+                is_pinned = TRUE,
+                updated_at = NOW()
             WHERE tenant_id = $1
-              AND (is_pinned = TRUE OR device_mac = $2)
+              AND device_mac = $2
         `, [tenantId, currentMac]);
         await client.query("COMMIT");
     } catch (err) {
