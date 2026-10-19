@@ -175,14 +175,47 @@ const updateDeviceMetadata = async (deviceMac, changes, tenantId = null) => {
         metadata: {}
     };
 
-    return upsertDeviceMetadata({
-        device_mac: currentMac,
-        name: changes.name ?? existing.name,
-        room: changes.room ?? existing.room,
-        sn: changes.sn ?? changes.serial_number ?? existing.serial_number,
-        spark: changes.spark ?? existing.spark,
-        metadata: changes.metadata ?? existing.metadata
-    }, tenantId);
+    // This device is already owned by the tenant, so update its metadata
+    // directly. Reusing the claim/upsert path here would re-check the hardware
+    // registry and could prevent an existing room from being renamed.
+    const result = await pool.query(`
+        UPDATE devices
+        SET
+            name = $3,
+            room = $4,
+            serial_number = $5,
+            spark = $6::jsonb,
+            metadata = $7::jsonb,
+            updated_at = NOW()
+        WHERE device_mac = $1
+          AND tenant_id = $2
+        RETURNING
+            device_mac,
+            tenant_id,
+            name,
+            room,
+            serial_number,
+            spark,
+            metadata,
+            is_pinned,
+            NULL::numeric AS aqi,
+            NULL::timestamp AS last_seen,
+            NULL::varchar AS device_time
+    `, [
+        currentMac,
+        tenantId,
+        String(changes.name ?? existing.name).trim() || existing.name,
+        String(changes.room ?? existing.room).trim() || existing.room,
+        changes.sn ?? changes.serial_number ?? existing.serial_number,
+        JSON.stringify(changes.spark ?? existing.spark ?? DEFAULT_SPARK),
+        JSON.stringify(changes.metadata ?? existing.metadata ?? {})
+    ]);
+
+    if (result.rowCount === 0) {
+        throw new Error("device not found");
+    }
+
+    return rowToDevice(result.rows[0]);
 };
 
 const pinDeviceMetadata = async (deviceMac, tenantId = null) => {
