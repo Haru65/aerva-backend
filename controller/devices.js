@@ -41,6 +41,8 @@ function rowToDevice(row) {
         sn: row.serial_number || "",
         is_pinned: row.is_pinned === true,
         aqi,
+        temperature: row.temperature == null ? null : Number(row.temperature),
+        humidity: row.humidity == null ? null : Number(row.humidity),
         battery: row.battery == null ? null : Number(row.battery),
         status: online ? airStatus : "off",
         airStatus,
@@ -61,6 +63,8 @@ const listDeviceMetadata = async (tenantId) => {
             SELECT DISTINCT ON (UPPER(TRIM(device_mac)))
                 UPPER(TRIM(device_mac)) AS device_mac,
                 aqi,
+                temperature,
+                humidity,
                 battery,
                 received_at AS last_seen,
                 device_time
@@ -78,6 +82,8 @@ const listDeviceMetadata = async (tenantId) => {
             d.metadata,
             d.is_pinned,
             latest_payload.aqi,
+            latest_payload.temperature,
+            latest_payload.humidity,
             latest_payload.battery,
             latest_payload.last_seen,
             latest_payload.device_time
