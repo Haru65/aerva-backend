@@ -1,0 +1,6 @@
+BEGIN;
+
+ALTER TABLE mqtt_payload
+  ADD COLUMN IF NOT EXISTS battery NUMERIC;
+
+COMMIT;

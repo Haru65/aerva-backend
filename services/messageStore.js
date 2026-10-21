@@ -35,7 +35,7 @@ const savePayload = async (payload) => {
     
     const isNewFormat = message.device_mac || (message.readings && typeof message.readings === "object");
     
-    let deviceMac, timeStatus, deviceTime, temperature, humidity, co_ppm, o2_pct, co2_ppm, pm1_0, pm2_5, pm10, aqi, rssi, o2_warn, uptime, mqtt_err;
+    let deviceMac, timeStatus, deviceTime, temperature, humidity, co_ppm, o2_pct, co2_ppm, pm1_0, pm2_5, pm10, aqi, battery, rssi, o2_warn, uptime, mqtt_err;
 
     if (isNewFormat) {
         // New flat format
@@ -52,6 +52,7 @@ const savePayload = async (payload) => {
         pm1_0 = readings.pm1_0;
         pm2_5 = readings.pm2_5;
         pm10 = readings.pm10;
+        battery = readings.battery ?? readings.battery_pct ?? message.BATTERY ?? message.battery;
         rssi = readings.rssi;
         
         const status = message.status || {};
@@ -74,6 +75,7 @@ const savePayload = async (payload) => {
         pm1_0 = message.pm?.pm1_0;
         pm2_5 = message.pm?.pm2_5;
         pm10 = message.pm?.pm10;
+        battery = message.BATTERY ?? message.battery;
         rssi = message.diag?.rssi;
         o2_warn = message.diag?.o2_warn;
         uptime = message.diag?.uptime;
@@ -100,13 +102,14 @@ const savePayload = async (payload) => {
             pm2_5,
             pm10,
             aqi,
+            battery,
             rssi,
             o2_warn,
             uptime,
             mqtt_err,
             raw_payload
     ) VALUES (
-    $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
+    $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
     RETURNING *;`;
 
     const values = [
@@ -122,6 +125,7 @@ const savePayload = async (payload) => {
         pm2_5,
         pm10,
         aqi,
+        battery,
         rssi,
         o2_warn,
         uptime,

@@ -41,6 +41,7 @@ function rowToDevice(row) {
         sn: row.serial_number || "",
         is_pinned: row.is_pinned === true,
         aqi,
+        battery: row.battery == null ? null : Number(row.battery),
         status: online ? airStatus : "off",
         airStatus,
         connection_status: online ? "online" : "offline",
@@ -60,6 +61,7 @@ const listDeviceMetadata = async (tenantId) => {
             SELECT DISTINCT ON (UPPER(TRIM(device_mac)))
                 UPPER(TRIM(device_mac)) AS device_mac,
                 aqi,
+                battery,
                 received_at AS last_seen,
                 device_time
             FROM mqtt_payload
@@ -76,6 +78,7 @@ const listDeviceMetadata = async (tenantId) => {
             d.metadata,
             d.is_pinned,
             latest_payload.aqi,
+            latest_payload.battery,
             latest_payload.last_seen,
             latest_payload.device_time
         FROM devices d

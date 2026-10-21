@@ -36,7 +36,8 @@ const retrivelLatestData = async (deviceMac = null, tenantId = null) => {
                 pm2_5: Number(row.pm2_5),
                 pm10: Number(row.pm10),
                 rssi: Number(row.rssi),
-                aqi: Number(row.aqi)
+                aqi: Number(row.aqi),
+                battery: row.battery == null ? null : Number(row.battery)
             },
 
             status: {

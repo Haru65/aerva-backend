@@ -44,7 +44,8 @@ Response shape:
     pm1_0: 10,
     pm2_5: 20,
     pm10: 30,
-    rssi: -60
+    rssi: -60,
+    battery: 55
   },
   status: {
     o2_warn: false,

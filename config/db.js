@@ -84,6 +84,7 @@ async function createSchema() {
         pm2_5 NUMERIC,
         pm10 NUMERIC,
         aqi NUMERIC,
+        battery NUMERIC,
 
         rssi NUMERIC,
         o2_warn BOOLEAN,
@@ -94,6 +95,7 @@ async function createSchema() {
 
         received_at TIMESTAMP DEFAULT NOW())`
     await pool.query(payloadTableQuery);
+    await pool.query(`ALTER TABLE mqtt_payload ADD COLUMN IF NOT EXISTS battery NUMERIC`);
 
     const devicesTableQuery = `
     CREATE TABLE IF NOT EXISTS devices (
