@@ -29,6 +29,28 @@ test("custom reports query the complete inclusive date interval", async () => {
     }
 });
 
+test("reports contain at most one reading per fixed 30-second interval", async () => {
+    const originalQuery = pool.query;
+    let captured;
+    pool.query = async (sql, params) => {
+        captured = { sql: String(sql), params };
+        return { rows: [] };
+    };
+
+    try {
+        await reportData("EC64C96EDA3C", { range: "1h" }, "tenant_test");
+
+        assert.match(
+            captured.sql,
+            /PARTITION BY FLOOR\(EXTRACT\(EPOCH FROM report_device_time\) \/ 30\)/
+        );
+        assert.match(captured.sql, /WHERE report_sample_rank = 1/);
+        assert.match(captured.sql, /ORDER BY report_device_time ASC, received_at ASC, id ASC/);
+    } finally {
+        pool.query = originalQuery;
+    }
+});
+
 test("report dates are strictly validated", () => {
     assert.equal(_test.isISODate("2026-09-01"), true);
     assert.equal(_test.isISODate("2026-02-30"), false);

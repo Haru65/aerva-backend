@@ -77,7 +77,7 @@ const reportData = async (deviceMac, period, tenantId = null) => {
 
         const reportRowsQuery = `WITH report_rows AS (
                 SELECT
-                    *,
+                    mp.*,
                     CASE
                         WHEN device_time ~ '^\\d{4}-\\d{2}-\\d{2}([ T]\\d{2}:\\d{2}(:\\d{2})?)?$'
                         THEN device_time::timestamp
@@ -87,21 +87,36 @@ const reportData = async (deviceMac, period, tenantId = null) => {
                 INNER JOIN devices d ON UPPER(TRIM(d.device_mac)) = UPPER(TRIM(mp.device_mac))
                 WHERE UPPER(TRIM(mp.device_mac)) = UPPER(TRIM($1))
                   AND d.tenant_id = $3
+            ), filtered_report_rows AS (`;
+
+        const sampledRowsQuery = `), ranked_report_rows AS (
+                SELECT
+                    filtered_report_rows.*,
+                    ROW_NUMBER() OVER (
+                        PARTITION BY FLOOR(EXTRACT(EPOCH FROM report_device_time) / 30)
+                        ORDER BY report_device_time ASC, received_at ASC, id ASC
+                    ) AS report_sample_rank
+                FROM filtered_report_rows
             )
-            SELECT * FROM report_rows`;
+            SELECT *
+            FROM ranked_report_rows
+            WHERE report_sample_rank = 1
+            ORDER BY report_device_time DESC`;
 
         const result = hasCustomDates
             ? await pool.query(
                 `${reportRowsQuery}
+                SELECT * FROM report_rows
                 WHERE report_device_time >= $2::date
                   AND report_device_time < ($4::date + INTERVAL '1 day')
-                ORDER BY report_device_time DESC`,
+                ${sampledRowsQuery}`,
                 [deviceMac, selection.from, tenantId, selection.to]
             )
             : await pool.query(
                 `${reportRowsQuery}
+                SELECT * FROM report_rows
                 WHERE report_device_time >= (NOW() - $2::interval)::timestamp
-                ORDER BY report_device_time DESC`,
+                ${sampledRowsQuery}`,
                 [deviceMac, interval, tenantId]
             );
          
